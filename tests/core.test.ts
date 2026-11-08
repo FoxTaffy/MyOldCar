@@ -67,3 +67,31 @@ describe('PerformanceTimer', () => {
     expect(t.result!.warnings).toContain('Возможна пробуксовка сцепления')
   })
 })
+
+import { CapacitorTcpTransport, ELMService, type TcpPlugin } from '@/services/ELMService'
+
+describe('CapacitorTcpTransport (подставной плагин)', () => {
+  it('read-цикл доставляет ответ ELM и корректно останавливается', async () => {
+    const inbox: string[] = []
+    let closed = false
+    const fake: TcpPlugin = {
+      connect: async () => ({ client: 7 }),
+      send: async ({ data }) => { inbox.push(data) },
+      read: async () => {
+        if (closed) throw Object.assign(new Error('closed'), { code: 'CLOSED' })
+        if (inbox.length) {
+          const cmd = inbox.shift()!.trim()
+          return { result: cmd === '010D' ? '41 0D 3C\r\r>' : 'OK\r\r>', encoding: 'utf8' }
+        }
+        await new Promise((r) => setTimeout(r, 5))
+        throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' })
+      },
+      disconnect: async () => { closed = true },
+    }
+    const elm = new ELMService(new CapacitorTcpTransport({ host: 'x', port: 1, timeoutMs: 1000 }, fake), { host: 'x', port: 1, timeoutMs: 1000 })
+    await elm.connect()
+    expect(await elm.readSpeed()).toBe(60)
+    await elm.disconnect()
+    expect(closed).toBe(true)
+  })
+})

@@ -14,8 +14,14 @@ npm test        # движок диагностики, парсеры, расх�
 - `src/services/PerformanceTimer.ts` — автомат 0–100 + детектор пробуксовки сцепления.
 - `src/services/FuelCalculator.ts` — л/ч и л/100 км по ДМРВ (AFR 14.7, ρ=745 г/л).
 
-## На телефоне
-ELM327 Wi-Fi — это сырой TCP (192.168.0.10:35000), браузерный WebSocket к нему не подключится. Нужен нативный Capacitor-плагин TCP с именем `TcpSocket` и методами `connect/send/disconnect` + событие `data` (контракт — в `ELMService.ts`, `CapacitorTcpTransport`). Плагин в проект не включён — подберите/напишите под него.
+## На телефоне (APK)
+Транспорт для реального адаптера — нативный плагин [`capacitor-tcp-socket`](https://www.npmjs.com/package/capacitor-tcp-socket) (Capacitor 8).
+APK собирает GitHub Actions (`.github/workflows/android-apk.yml`): вкладка **Actions → Android APK → последний запуск → Artifacts → MyOldCar-debug-apk**.
+
+Локально (нужны Node 22, JDK 21, Android SDK):
 ```bash
-npx cap add android && npm run cap:sync
+npm ci && npm run build
+npx cap add android && npx cap sync android
+cd android && ./gradlew assembleDebug   # android/app/build/outputs/apk/debug/app-debug.apk
 ```
+Телефон подключайте к Wi-Fi адаптера (192.168.0.10:35000). Если Android предлагает отключиться из-за отсутствия интернета — оставайтесь в сети.

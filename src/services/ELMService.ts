@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core'
+import { TcpSocket } from 'capacitor-tcp-socket'
 import type { SensorSnapshot } from '@/types'
 
 /* ------------------------------------------------------------------ */
@@ -22,36 +22,52 @@ export interface ElmConfig {
 
 export const DEFAULT_ELM_CONFIG: ElmConfig = { host: '192.168.0.10', port: 35000, timeoutMs: 4000 }
 
-/**
- * ELM327 Wi-Fi говорит по «сырому» TCP — браузерный WebSocket к нему напрямую не подключится.
- * В Capacitor нужен нативный TCP-плагин. Ниже — контракт, который он должен реализовать
- * (подойдёт любой плагин с такими методами/событием; имя плагина — 'TcpSocket').
- */
-interface TcpSocketPlugin {
-  connect(o: { ipAddress: string; port: number }): Promise<{ client: number }>
+/** Подмножество API плагина capacitor-tcp-socket, которое нам нужно (вынесено для подмены в тестах). */
+export interface TcpPlugin {
+  connect(o: { ipAddress: string; port?: number; timeout?: number }): Promise<{ client: number }>
   send(o: { client: number; data: string }): Promise<void>
-  disconnect(o: { client: number }): Promise<void>
-  addListener(
-    event: 'data',
-    cb: (e: { client: number; data: string }) => void,
-  ): Promise<{ remove: () => Promise<void> }>
+  read(o: { client: number; expectLen?: number; timeout?: number }): Promise<{ result: string; encoding: string }>
+  disconnect(o: { client: number }): Promise<unknown>
 }
 
+/**
+ * ELM327 Wi-Fi говорит по «сырому» TCP — браузерный WebSocket к нему не подключится.
+ * Используем нативный плагин capacitor-tcp-socket. Он без событий: данные забираются через read(),
+ * поэтому после connect() крутится фоновый цикл чтения, который отдаёт чанки в onData.
+ */
 export class CapacitorTcpTransport implements Transport {
-  private plugin = registerPlugin<TcpSocketPlugin>('TcpSocket')
   private client = -1
   private cb: (chunk: string) => void = () => {}
-  private handle: { remove: () => Promise<void> } | null = null
+  private reading = false
 
-  constructor(private readonly cfg: ElmConfig) {}
+  constructor(
+    private readonly cfg: ElmConfig,
+    private readonly plugin: TcpPlugin = TcpSocket as unknown as TcpPlugin,
+  ) {}
 
   async connect(): Promise<void> {
-    const { client } = await this.plugin.connect({ ipAddress: this.cfg.host, port: this.cfg.port })
+    const timeoutSec = Math.max(1, Math.ceil(this.cfg.timeoutMs / 1000))
+    const { client } = await this.plugin.connect({ ipAddress: this.cfg.host, port: this.cfg.port, timeout: timeoutSec })
     this.client = client
-    this.handle = await this.plugin.addListener('data', (e) => {
-      if (e.client === this.client) this.cb(e.data)
-    })
+    this.reading = true
+    void this.readLoop(client)
   }
+
+  private async readLoop(client: number): Promise<void> {
+    while (this.reading && this.client === client) {
+      try {
+        // Короткий таймаут, чтобы цикл быстро замечал закрытие; TIMEOUT — штатная ситуация.
+        const r = await this.plugin.read({ client, expectLen: 1024, timeout: 1 })
+        if (r.result) this.cb(r.result)
+      } catch (e) {
+        const code = (e as { code?: string }).code
+        if (code === 'TIMEOUT') continue
+        if (code === 'EOF' || code === 'CLOSED' || code === 'IO_ERROR') break
+        await new Promise((res) => setTimeout(res, 100))
+      }
+    }
+  }
+
   write(data: string): Promise<void> {
     return this.plugin.send({ client: this.client, data })
   }
@@ -59,9 +75,10 @@ export class CapacitorTcpTransport implements Transport {
     this.cb = cb
   }
   async close(): Promise<void> {
-    await this.handle?.remove()
-    if (this.client >= 0) await this.plugin.disconnect({ client: this.client })
+    this.reading = false
+    const c = this.client
     this.client = -1
+    if (c >= 0) await this.plugin.disconnect({ client: c })
   }
 }
 

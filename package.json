@@ -11,13 +11,14 @@
     "cap:sync": "npm run build && npx cap sync"
   },
   "dependencies": {
-    "@capacitor/core": "^6.1.2",
+    "@capacitor/core": "^8.6.0",
+    "capacitor-tcp-socket": "^8.0.0",
     "vue": "^3.5.13",
     "vue-router": "^4.4.5"
   },
   "devDependencies": {
-    "@capacitor/android": "^6.1.2",
-    "@capacitor/cli": "^6.1.2",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
