@@ -22,7 +22,13 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      # Android SDK уже есть на раннере; принимаем лицензии и ставим платформу, нужную плагину.
+      - name: Prepare Android SDK
+        run: |
+          set +o pipefail
+          SDKM=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -n1)
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-36" "build-tools;36.0.0"
 
       - run: npm ci
       - run: npm test
