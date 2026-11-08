@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import OnboardingWizard from '@/components/OnboardingWizard.vue'
 import { useVehicle } from '@/composables/useVehicle'
 
 const v = useVehicle()
+const showSetup = ref(!v.prefs.onboarded)
 const tabs = [
   { to: '/', label: 'Панель' },
   { to: '/diagnostics', label: 'Ошибки' },
@@ -19,6 +22,7 @@ const tabs = [
           {{ v.status.value === 'connected' ? (v.prefs.mock ? 'Демо-режим (mock)' : 'ELM327 подключён') : v.status.value === 'connecting' ? 'Подключение…' : 'Не подключено' }}
         </div>
       </div>
+      <button class="btn-ghost !px-3 !py-2 text-sm" aria-label="Настройки" @click="showSetup = true">⚙</button>
       <label v-if="!v.isConnected.value" class="flex items-center gap-2 text-xs text-slate-300">
         <input v-model="v.prefs.mock" type="checkbox" class="accent-blue-500" /> Mock
       </label>
@@ -30,6 +34,8 @@ const tabs = [
     <main class="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
       <RouterView />
     </main>
+
+    <OnboardingWizard v-if="showSetup" @done="showSetup = false" />
 
     <nav class="grid grid-cols-3 border-t border-night-600 bg-night-900/95 pb-[env(safe-area-inset-bottom)]">
       <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="py-3 text-center text-sm font-semibold text-slate-400" active-class="!text-accent-glow">

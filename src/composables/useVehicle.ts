@@ -16,12 +16,16 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
-const prefs = reactive({
+const PREFS_KEY = 'myoldcar.prefs.v1'
+const prefs = reactive(load(PREFS_KEY, {
   // Вне телефона (браузер) по умолчанию работаем на заглушке.
   mock: !Capacitor.isNativePlatform(),
   host: '192.168.0.10',
   port: 35000,
-})
+  /** Пройден ли мастер первого запуска. */
+  onboarded: false,
+}))
+watch(prefs, (v) => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(v)) } catch { /* ignore */ } }, { deep: true })
 const settings = reactive<AppSettings>(load(LS_KEY, { ...DEFAULT_SETTINGS }))
 watch(settings, (v) => { try { localStorage.setItem(LS_KEY, JSON.stringify(v)) } catch { /* ignore */ } }, { deep: true })
 
