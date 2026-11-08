@@ -22,9 +22,9 @@ const speedPath = computed(() => path((p) => p.speed, 120))
     <g stroke="#26334d" stroke-width="1">
       <line v-for="i in 4" :key="i" x1="0" :x2="W" :y1="(H / 4) * i" :y2="(H / 4) * i" />
     </g>
-    <path v-if="points.length > 1" :d="speedPath" fill="none" stroke="#34d399" stroke-width="2" />
-    <path v-if="points.length > 1" :d="rpmPath" fill="none" stroke="#60a5fa" stroke-width="2.5" />
-    <text x="6" y="14" fill="#60a5fa" font-size="12">об/мин (макс {{ maxRpm }})</text>
-    <text x="6" y="30" fill="#34d399" font-size="12">км/ч (макс 120)</text>
+    <path v-if="points.length > 1" :d="speedPath" fill="none" stroke="#5fae7a" stroke-width="2" />
+    <path v-if="points.length > 1" :d="rpmPath" fill="none" stroke="#7fb0e6" stroke-width="2.5" />
+    <text x="6" y="14" fill="#7fb0e6" font-size="12">об/мин (макс {{ maxRpm }})</text>
+    <text x="6" y="30" fill="#5fae7a" font-size="12">км/ч (макс 120)</text>
   </svg>
 </template>

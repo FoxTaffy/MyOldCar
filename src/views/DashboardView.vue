@@ -33,14 +33,14 @@ const fuel = computed(() => {
   // Читаем snapshot, чтобы computed пересчитывался вместе с watch.
   void snapshot.value
   return l100Value !== null
-    ? { value: fmt(l100Value, 1), unit: 'л / 100 км', level: fuelLevel(l100Value) }
-    : { value: fmt(lhValue, 1), unit: 'л / час (стоим)', level: 'ok' as Level }
+    ? { value: fmt(l100Value, 1), unit: 'л/100 км', level: fuelLevel(l100Value) }
+    : { value: fmt(lhValue, 1), unit: 'л/ч (стоим)', level: 'ok' as Level }
 })
 </script>
 
 <template>
-  <p v-if="!isConnected" class="card mt-2 p-4 text-center text-slate-400">Нажми «Подключить» — в режиме Mock данные симулируются.</p>
-  <div class="mt-2 grid grid-cols-2 gap-3">
+  <p v-if="!isConnected" class="mb-3 border border-night-600 p-3 text-sm text-[#7b8696]">Нет связи с адаптером. Нажмите «Подключить»; в режиме Mock данные симулируются.</p>
+  <div class="grid grid-cols-2 gap-2">
     <GaugeTile label="Скорость" :value="fmt(snapshot?.speedKmh)" unit="км/ч" :level="speedLevel(snapshot?.speedKmh ?? null)" />
     <GaugeTile label="Обороты" :value="fmt(snapshot?.rpm)" unit="об/мин" :level="rpmLevel(snapshot?.rpm ?? null)" />
     <GaugeTile label="Темп. ОЖ" :value="fmt(snapshot?.coolantTempC)" unit="°C" :level="tempLevel(snapshot?.coolantTempC ?? null)" />

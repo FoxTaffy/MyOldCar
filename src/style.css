@@ -5,11 +5,17 @@
 :root { color-scheme: dark; }
 html, body, #app { height: 100%; }
 body {
-  @apply bg-night-950 text-slate-100 antialiased;
-  background-image: radial-gradient(1200px 600px at 50% -10%, rgba(59, 130, 246, 0.12), transparent 60%);
+  @apply bg-night-950 text-[#d5dae2] antialiased;
   padding-top: env(safe-area-inset-top);
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
-.card { @apply rounded-2xl border border-night-600/70 bg-night-800/80 backdrop-blur; }
-.btn { @apply rounded-xl bg-accent px-4 py-3 font-semibold text-white shadow-lg shadow-blue-900/40 active:scale-95 transition disabled:opacity-40; }
-.btn-ghost { @apply rounded-xl border border-night-600 bg-night-700/60 px-4 py-3 font-semibold text-slate-200 active:scale-95 transition disabled:opacity-40; }
+input[type='checkbox'], input[type='radio'] { @apply accent-accent; }
+
+.card { @apply border border-night-600 bg-night-800; }
+.label { @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7b8696]; }
+.btn { @apply bg-accent px-4 py-3 text-sm font-semibold uppercase tracking-wider text-night-950 active:bg-accent-glow disabled:opacity-35; }
+.btn-ghost { @apply border border-night-600 bg-transparent px-4 py-3 text-sm font-semibold uppercase tracking-wider text-[#c3cad5] active:bg-night-700 disabled:opacity-35; }
+.field { @apply w-full border border-night-600 bg-night-900 px-3 py-2 font-mono text-[#d5dae2]; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

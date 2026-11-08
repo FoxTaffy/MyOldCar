@@ -57,12 +57,12 @@ const seconds = computed(() => ((result.value?.durationMs ?? elapsed.value) / 10
 </script>
 
 <template>
-  <section class="mt-2 space-y-3">
-    <div class="card p-6 text-center">
-      <div class="text-xs font-semibold uppercase tracking-widest text-slate-400">0 → 100 км/ч</div>
-      <div class="my-2 font-mono text-8xl font-bold tabular-nums" :class="result ? 'text-emerald-400' : 'text-accent-glow'">{{ seconds }}<span class="text-3xl text-slate-400"> с</span></div>
-      <div class="font-mono text-2xl text-slate-300">{{ speed }} км/ч</div>
-      <div class="mt-1 text-sm text-slate-500">
+  <section class="space-y-2">
+    <div class="card p-5 text-center">
+      <div class="label">0 → 100 км/ч</div>
+      <div class="my-2 font-mono text-7xl font-semibold tabular-nums" :class="result ? 'text-ok' : 'text-[#d5dae2]'">{{ seconds }}<span class="text-3xl text-[#7b8696]"> с</span></div>
+      <div class="font-mono text-2xl text-[#aab3c0]">{{ speed }} км/ч</div>
+      <div class="mt-1 text-sm text-[#5f6978]">
         <template v-if="result">Готово</template>
         <template v-else-if="state === 'running'">Идёт замер…</template>
         <template v-else-if="armed">Жду начала движения…</template>
@@ -75,8 +75,8 @@ const seconds = computed(() => ((result.value?.durationMs ?? elapsed.value) / 10
       <button class="btn-ghost" :disabled="!armed" @click="stop">Стоп</button>
     </div>
 
-    <div v-if="result?.warnings.length" class="card border-amber-400/70 p-4 text-amber-300">
-      <p v-for="w in result.warnings" :key="w">⚠ {{ w }}</p>
+    <div v-if="result?.warnings.length" class="card border-warn p-4 text-warn">
+      <p v-for="w in result.warnings" :key="w">{{ w }}</p>
     </div>
 
     <div class="card p-3"><RpmChart :points="points" :max-t="result ? result.durationMs : 10000" /></div>

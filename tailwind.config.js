@@ -2,12 +2,18 @@
 export default {
   content: ['./index.html', './src/**/*.{vue,ts}'],
   theme: {
+    borderRadius: { none: '0', sm: '3px', DEFAULT: '3px' },
     extend: {
       colors: {
-        night: { 950: '#05070d', 900: '#0a0f1c', 800: '#101828', 700: '#1a2438', 600: '#26334d' },
-        accent: { DEFAULT: '#3b82f6', glow: '#60a5fa' },
+        // Нейтральный графит с лёгким синим подтоном; без градиентов и свечения.
+        night: { 950: '#090b0f', 900: '#0d1015', 800: '#12161d', 700: '#1a202a', 600: '#262e3b' },
+        accent: { DEFAULT: '#4a86c8', glow: '#7fb0e6' },
+        ok: '#5fae7a', warn: '#d6a23f', bad: '#d9594c',
       },
-      fontFamily: { mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'] },
+      fontFamily: {
+        sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+      },
     },
   },
   plugins: [],

@@ -45,13 +45,13 @@ async function clear(): Promise<void> {
   }
 }
 
-const barColor = (p: number) => (p >= 50 ? 'bg-red-500' : p >= 25 ? 'bg-amber-400' : 'bg-accent')
+const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-accent')
 </script>
 
 <template>
-  <section class="mt-2 space-y-3">
+  <section class="space-y-2">
     <div class="card space-y-2 p-4">
-      <h2 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Контекст для диагноста</h2>
+      <h2 class="label">Контекст для диагноста</h2>
       <label v-for="t in toggles" :key="t.key" class="flex items-start gap-3 text-sm">
         <input v-model="settings[t.key]" type="checkbox" class="mt-1 accent-blue-500" />
         <span>{{ t.label }}</span>
@@ -62,28 +62,28 @@ const barColor = (p: number) => (p >= 50 ? 'bg-red-500' : p >= 25 ? 'bg-amber-40
       <button class="btn flex-1" :disabled="!isConnected || busy" @click="scan">{{ busy ? 'Чтение…' : 'Считать ошибки' }}</button>
       <button class="btn-ghost" :disabled="!isConnected || busy || !results.length" @click="clear">Сбросить</button>
     </div>
-    <p v-if="!isConnected" class="text-center text-sm text-slate-500">Сначала подключись к адаптеру.</p>
-    <p v-if="err" class="text-sm text-red-400">{{ err }}</p>
-    <p v-if="scanned && !results.length" class="card p-4 text-center text-emerald-400">Ошибок не найдено ✔</p>
+    <p v-if="!isConnected" class="text-center text-sm text-[#5f6978]">Сначала подключись к адаптеру.</p>
+    <p v-if="err" class="text-sm text-bad">{{ err }}</p>
+    <p v-if="scanned && !results.length" class="card p-4 text-center text-ok">Ошибок не найдено</p>
 
     <article v-for="r in results" :key="r.code" class="card space-y-3 p-4">
       <header>
-        <div class="font-mono text-2xl font-bold text-red-400">{{ r.code }}</div>
-        <div class="text-sm text-slate-300">{{ r.title }}</div>
+        <div class="font-mono text-2xl font-semibold text-bad">{{ r.code }}</div>
+        <div class="text-sm text-[#aab3c0]">{{ r.title }}</div>
       </header>
       <ul class="space-y-3">
         <li v-for="c in r.causes" :key="c.id">
           <div class="flex items-baseline justify-between gap-2">
             <span class="font-semibold">{{ c.title }}</span>
-            <span class="font-mono text-lg">{{ c.probability }}%</span>
+            <span class="font-mono text-base tabular-nums">{{ c.probability }}%</span>
           </div>
-          <div class="my-1 h-2 overflow-hidden rounded-full bg-night-700">
-            <div class="h-full rounded-full transition-all" :class="barColor(c.probability)" :style="{ width: c.probability + '%' }" />
+          <div class="my-1 h-1.5 bg-night-700">
+            <div class="h-full" :class="barColor(c.probability)" :style="{ width: c.probability + '%' }" />
           </div>
-          <p class="text-sm text-slate-400">{{ c.recommendation }}</p>
+          <p class="text-sm text-[#7b8696]">{{ c.recommendation }}</p>
         </li>
       </ul>
-      <details v-if="r.notes.length" class="text-xs text-slate-500">
+      <details v-if="r.notes.length" class="text-xs text-[#5f6978]">
         <summary class="cursor-pointer">Почему такие вероятности</summary>
         <ul class="mt-1 list-disc pl-5"><li v-for="n in r.notes" :key="n">{{ n }}</li></ul>
       </details>

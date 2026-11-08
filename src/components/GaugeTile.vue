@@ -4,20 +4,22 @@ import type { Level } from '@/types'
 
 const props = defineProps<{ label: string; value: string; unit: string; level: Level; hint?: string }>()
 
-const ring = computed(() => ({
-  ok: 'border-emerald-500/60 shadow-emerald-500/20 text-emerald-400',
-  warn: 'border-amber-400/70 shadow-amber-400/20 text-amber-300',
-  bad: 'border-red-500/80 shadow-red-500/30 text-red-400',
+// Статус — цветная полоса слева и цвет цифр; остальное нейтральное.
+const tone = computed(() => ({
+  ok: { bar: 'bg-ok', text: 'text-ok' },
+  warn: { bar: 'bg-warn', text: 'text-warn' },
+  bad: { bar: 'bg-bad', text: 'text-bad' },
 }[props.level]))
 </script>
 
 <template>
-  <div class="card flex flex-col justify-between border-2 p-4 shadow-lg transition-colors" :class="ring">
-    <div class="text-xs font-semibold uppercase tracking-widest text-slate-400">{{ label }}</div>
-    <div class="my-2 text-center font-mono text-6xl font-bold tabular-nums leading-none sm:text-7xl">{{ value }}</div>
-    <div class="flex items-end justify-between text-sm text-slate-400">
-      <span>{{ unit }}</span>
-      <span v-if="hint" class="text-xs">{{ hint }}</span>
+  <div class="card relative flex flex-col justify-between py-3 pl-5 pr-3">
+    <span class="absolute inset-y-0 left-0 w-1" :class="tone.bar" />
+    <div class="label">{{ label }}</div>
+    <div class="my-3 text-right font-mono text-5xl font-semibold tabular-nums leading-none sm:text-6xl" :class="tone.text">{{ value }}</div>
+    <div class="text-xs text-[#7b8696]">
+      <div class="uppercase tracking-wider">{{ unit }}</div>
+      <div v-if="hint" class="font-mono">{{ hint }}</div>
     </div>
   </div>
 </template>
