@@ -81,7 +81,7 @@ describe('CapacitorTcpTransport (подставной плагин)', () => {
         if (closed) throw Object.assign(new Error('closed'), { code: 'CLOSED' })
         if (inbox.length) {
           const cmd = inbox.shift()!.trim()
-          return { result: cmd === '010D' ? '41 0D 3C\r\r>' : 'OK\r\r>', encoding: 'utf8' }
+          return { result: cmd === '010D' ? '41 0D 3C\r\r>' : cmd === '0100' ? '41 00 BE 3E B8 11\r\r>' : 'OK\r\r>', encoding: 'utf8' }
         }
         await new Promise((r) => setTimeout(r, 5))
         throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' })

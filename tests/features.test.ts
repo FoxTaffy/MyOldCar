@@ -37,7 +37,7 @@ describe('BLE', () => {
       stopNotifications: async () => {},
       write: async (_i, _s, _c, v) => {
         const cmd = new TextDecoder().decode(v).trim()
-        const reply = cmd === '010C' ? '41 0C 1A F8\r\r>' : 'OK\r\r>'
+        const reply = cmd === '010C' ? '41 0C 1A F8\r\r>' : cmd === '0100' ? '41 00 BE 3E B8 11\r\r>' : 'OK\r\r>'
         for (let i = 0; i < reply.length; i += 7) setTimeout(() => notify(new DataView(enc.encode(reply.slice(i, i + 7)).buffer)), 1)
       },
       writeWithoutResponse: async () => {},
@@ -156,5 +156,63 @@ describe('BLE: status 133', () => {
   it('friendlyBleError: разрешения и выключенный Bluetooth', () => {
     expect(friendlyBleError(new Error('Permission denied'))).toMatch(/Разрешите/)
     expect(friendlyBleError(new Error('Bluetooth is disabled'))).toMatch(/Включите/)
+  })
+})
+
+import { ELMError, type Transport } from '@/services/ELMService'
+
+/** Фейковый ELM: ответ зависит от выбранного протокола; undefined — молчание (идёт поиск). */
+function scriptedElm(respond: (proto: string, cmd: string) => string | undefined) {
+  let cb: (s: string) => void = () => {}
+  let proto = '0'
+  const sent: string[] = []
+  const t: Transport = {
+    connect: async () => {}, close: async () => {},
+    onData: (f) => { cb = f },
+    write: async (data) => {
+      const cmd = data.replace(/\r/g, '').trim()
+      sent.push(cmd)
+      if (cmd.startsWith('ATSP')) proto = cmd.slice(4)
+      const r = cmd === '' ? 'STOPPED' : cmd === 'ATDPN' ? 'A' + proto : cmd.startsWith('AT') ? 'OK' : respond(proto, cmd)
+      if (r !== undefined) setTimeout(() => cb(r + '\r\r>'), 1)
+    },
+  }
+  return { t, sent }
+}
+const fast = { host: '', port: 0, timeoutMs: 300, searchMs: 40, probeMs: 40 }
+
+describe('Подключение к ЭБУ', () => {
+  it('авто-поиск не нашёл ЭБУ → перебор протоколов, найденный запоминается', async () => {
+    const { t, sent } = scriptedElm((p, c) => (c === '0100' ? (p === '5' ? '41 00 BE 3E B8 11' : 'UNABLE TO CONNECT') : 'NO DATA'))
+    const progress: (string | null)[] = []
+    const elm = new ELMService(t, fast)
+    elm.onProgress = (m) => progress.push(m)
+    await elm.connect()
+    expect(elm.connected).toBe(true)
+    expect(elm.protocol).toBe('5')
+    expect(sent.filter((c) => c.startsWith('ATSP'))).toEqual(['ATSP0', 'ATSP5'])
+    expect(progress.some((m) => m?.includes('ISO 14230'))).toBe(true)
+  })
+
+  it('адаптер молчит во время поиска → поиск прерывается, пробуем следующий протокол', async () => {
+    const { t, sent } = scriptedElm((p, c) => (c === '0100' ? (p === '3' ? '41 00 BE 3E B8 11' : undefined) : undefined))
+    const elm = new ELMService(t, fast)
+    await elm.connect()
+    expect(elm.protocol).toBe('3')
+    expect(sent).toContain('') // отправлен bare CR для прерывания поиска
+  })
+
+  it('сохранённый протокол пробуется первым', async () => {
+    const { t, sent } = scriptedElm((p, c) => (c === '0100' && p === '4' ? '41 00 BE 3E B8 11' : 'UNABLE TO CONNECT'))
+    await new ELMService(t, { ...fast, protocol: '4' }).connect()
+    expect(sent.filter((c) => c.startsWith('ATSP'))).toEqual(['ATSP4'])
+  })
+
+  it('ЭБУ не отвечает ни на одном протоколе → ошибка, а не «подключено»', async () => {
+    const { t } = scriptedElm((_p, c) => (c === '0100' ? 'UNABLE TO CONNECT' : 'NO DATA'))
+    const elm = new ELMService(t, fast)
+    await expect(elm.connect()).rejects.toThrow(/ЭБУ не отвечает/)
+    await expect(elm.connect()).rejects.toBeInstanceOf(ELMError)
+    expect(elm.connected).toBe(false)
   })
 })

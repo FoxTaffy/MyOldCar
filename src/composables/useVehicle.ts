@@ -28,6 +28,8 @@ const prefs = reactive(load(PREFS_KEY, {
   port: 35000,
   bleId: '',
   bleName: '',
+  /** Протокол ЭБУ, найденный при последнем успешном подключении (номер ATSP). */
+  protocol: '',
   /** Подключаться при запуске и переподключаться при потере связи. */
   autoConnect: true,
   /** Пройден ли мастер первого запуска. */
@@ -41,6 +43,8 @@ watch(settings, (v) => { try { localStorage.setItem(LS_KEY, JSON.stringify(v)) }
 const status = ref<'disconnected' | 'connecting' | 'connected'>('disconnected')
 const via = ref<ConnectionKind | null>(null)
 const error = ref<string | null>(null)
+/** Что сейчас делает подключение («Поиск протокола ЭБУ…»). */
+const note = ref<string | null>(null)
 const snapshot = ref<SensorSnapshot | null>(null)
 /** normal — полный цикл PID; fast — только скорость+обороты; off — опрос на паузе. */
 const pollMode = ref<'normal' | 'fast' | 'off'>('normal')
@@ -120,9 +124,10 @@ function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 }
 
 async function tryKind(kind: ConnectionKind): Promise<ELMService> {
-  const svc = createElmService({ kind, host: prefs.host, port: prefs.port, bleId: prefs.bleId })
+  const svc = createElmService({ kind, host: prefs.host, port: prefs.port, bleId: prefs.bleId, protocol: prefs.protocol })
+  svc.onProgress = (m) => { note.value = m }
   try {
-    await withTimeout(svc.connect(), kind === 'ble' ? 60000 : 25000, kind === 'ble' ? 'Bluetooth: адаптер не отвечает' : 'Wi-Fi: адаптер не отвечает')
+    await withTimeout(svc.connect(), 150000, kind === 'ble' ? 'Bluetooth: адаптер не отвечает' : 'Wi-Fi: адаптер не отвечает')
     return svc
   } catch (e) {
     await svc.disconnect().catch(() => undefined)
@@ -176,6 +181,8 @@ async function connect(auto = false): Promise<void> {
     try {
       const svc = await tryKind(kind)
       elm = svc
+      if (svc.protocol && kind !== 'mock') prefs.protocol = svc.protocol
+      note.value = null
       via.value = kind
       status.value = 'connected'
       recorder.begin(Date.now())
@@ -187,6 +194,7 @@ async function connect(auto = false): Promise<void> {
     }
   }
   error.value = errors.join(' · ')
+  note.value = null
   status.value = 'disconnected'
   scheduleReconnect()
 }
@@ -219,7 +227,7 @@ function autoStart(): void {
 
 export function useVehicle() {
   return {
-    prefs, settings, status, via, error, snapshot, pollMode, tripLive,
+    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive,
     isConnected: computed(() => status.value === 'connected'),
     connect: () => connect(false),
     disconnect, autoStart,

@@ -21,9 +21,24 @@ export interface ElmConfig {
   port: number
   /** Таймаут ответа на одну команду, мс. */
   timeoutMs: number
+  /** Ранее найденный номер протокола ELM (ATSP): пробуется первым. */
+  protocol?: string
+  /** Сколько ждать авто-поиска протокола (ATSP0), мс. */
+  searchMs?: number
+  /** Сколько ждать ответа ЭБУ при явно заданном протоколе, мс. */
+  probeMs?: number
 }
 
-export const DEFAULT_ELM_CONFIG: ElmConfig = { host: '192.168.0.10', port: 35000, timeoutMs: 4000 }
+export const DEFAULT_ELM_CONFIG: ElmConfig = { host: '192.168.0.10', port: 35000, timeoutMs: 5000 }
+
+/** Номера протоколов ELM327, актуальные для ВАЗ с ЭБУ М73: К-линия (KWP2000 / ISO 9141) и CAN на новых. */
+export const PROTOCOL_NAMES: Record<string, string> = {
+  '0': 'авто',
+  '5': 'ISO 14230-4 (быстрая инициализация)',
+  '4': 'ISO 14230-4 (5-бод)',
+  '3': 'ISO 9141-2',
+  '6': 'CAN 11 бит / 500 кбит',
+}
 
 /** Подмножество API плагина capacitor-tcp-socket, которое нам нужно (вынесено для подмены в тестах). */
 export interface TcpPlugin {
@@ -307,11 +322,12 @@ export class MockTransport implements Transport {
   }
 
   private reply(cmd: string): string {
-    if (cmd.startsWith('AT')) return cmd === 'ATZ' ? 'ELM327 v1.5' : 'OK'
+    if (cmd.startsWith('AT')) return cmd === 'ATZ' ? 'ELM327 v1.5' : cmd === 'ATDPN' ? 'A5' : 'OK'
     const s = this.sim()
     const hex = (n: number, bytes: number) =>
       Math.max(0, Math.round(n)).toString(16).toUpperCase().padStart(bytes * 2, '0').replace(/(..)/g, '$1 ').trim()
     switch (cmd) {
+      case '0100': return '41 00 BE 3E B8 11'
       case '010C': return `41 0C ${hex(s.rpm * 4, 2)}`
       case '010D': return `41 0D ${hex(s.speed, 1)}`
       case '0105': return `41 05 ${hex(s.temp + 40, 1)}`
@@ -439,10 +455,47 @@ export class ELMService {
     await this.transport.connect()
     // ATZ — сброс, ATE0 — без эха, ATL0 — без переводов строк, ATSP0 — авто-протокол.
     // Для ВАЗ с М73 фактически будет ISO 14230 (KWP2000) или ISO 9141 — выбирает адаптер.
-    for (const cmd of ['ATZ', 'ATE0', 'ATL0', 'ATSP0']) await this.send(cmd)
-    // Первый запрос запускает определение протокола (может занять несколько секунд).
-    await this.send('0100', 15000).catch(() => undefined)
-    this.connected = true
+    this.progress('Сброс адаптера…')
+    await this.send('ATZ', 8000)
+    // ATE0 — без эха, ATL0 — без переводов строк, ATH0 — без заголовков, ATS0 — без пробелов не нужен (разбор устойчив),
+    // ATAT1 — адаптивный таймаут (К-линия отвечает медленнее CAN).
+    for (const cmd of ['ATE0', 'ATL0', 'ATH0', 'ATAT1']) await this.send(cmd)
+
+    // Сначала сохранённый протокол, затем авто-поиск, затем явный перебор К-линий и CAN.
+    const order = [...new Set([this.cfg.protocol, '0', '5', '4', '3', '6'].filter((x): x is string => !!x))]
+    for (const p of order) {
+      this.progress(p === '0' ? 'Поиск протокола ЭБУ (авто)…' : `Протокол: ${PROTOCOL_NAMES[p] ?? p}…`)
+      if (await this.probe(p)) {
+        this.protocol = (await this.send('ATDPN').catch(() => '')).replace(/^A/i, '').trim().slice(0, 1) || p
+        this.connected = true
+        this.progress(null)
+        return
+      }
+    }
+    this.progress(null)
+    throw new ELMError('Адаптер на связи, но ЭБУ не отвечает. Включите зажигание (лучше заведите двигатель), проверьте, что адаптер плотно вставлен в разъём, и повторите.')
+  }
+
+  /** Найденный протокол (номер ATDPN) — сохраняется, чтобы в следующий раз подключаться быстрее. */
+  protocol: string | null = null
+  onProgress?: (msg: string | null) => void
+  private progress(msg: string | null): void {
+    this.onProgress?.(msg)
+  }
+
+  /** Пробует протокол: ATSP<p>, затем запрос 0100. true — ЭБУ ответил данными. */
+  private async probe(p: string): Promise<boolean> {
+    await this.send('ATSP' + p)
+    const wait = p === '0' ? (this.cfg.searchMs ?? 30000) : (this.cfg.probeMs ?? 12000)
+    try {
+      const r = await this.send('0100', wait)
+      return r.replace(/[\s]/g, '').includes('4100')
+    } catch {
+      // Таймаут: ELM может всё ещё искать — прерываем поиск и дожидаемся приглашения.
+      await this.send('', 3000).catch(() => undefined)
+      await new Promise((r) => setTimeout(r, 300))
+      return false
+    }
   }
 
   async disconnect(): Promise<void> {
@@ -531,11 +584,12 @@ export interface ConnectTarget {
   host?: string
   port?: number
   bleId?: string
+  protocol?: string
 }
 
 /** Фабрика сервиса под выбранный способ связи. */
 export function createElmService(t: ConnectTarget): ELMService {
-  const cfg = { ...DEFAULT_ELM_CONFIG, host: t.host ?? DEFAULT_ELM_CONFIG.host, port: t.port ?? DEFAULT_ELM_CONFIG.port }
+  const cfg = { ...DEFAULT_ELM_CONFIG, host: t.host ?? DEFAULT_ELM_CONFIG.host, port: t.port ?? DEFAULT_ELM_CONFIG.port, protocol: t.protocol || undefined }
   if (t.kind === 'mock') return new ELMService(new MockTransport(), cfg)
   if (t.kind === 'ble') {
     if (!t.bleId) throw new Error('Bluetooth-адаптер не выбран')

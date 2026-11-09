@@ -15,7 +15,7 @@ const tabs = [
 onMounted(() => v.autoStart())
 const viaText = { ble: 'BLUETOOTH', wifi: 'WI-FI', mock: 'ДЕМО' } as const
 const statusText = computed(() =>
-  v.status.value === 'connected' ? `ONLINE · ${viaText[v.via.value ?? 'mock']}` : v.status.value === 'connecting' ? 'ПОДКЛЮЧЕНИЕ…' : 'ОФФЛАЙН',
+  v.status.value === 'connected' ? `ONLINE · ${viaText[v.via.value ?? 'mock']}` : v.status.value === 'connecting' ? (v.note.value ?? 'ПОДКЛЮЧЕНИЕ…').toUpperCase() : 'ОФФЛАЙН',
 )
 </script>
 
