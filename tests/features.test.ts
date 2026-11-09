@@ -216,3 +216,29 @@ describe('Подключение к ЭБУ', () => {
     expect(elm.connected).toBe(false)
   })
 })
+
+import { isReadOnlyCommand } from '@/services/ELMService'
+
+describe('Только чтение', () => {
+  it('разрешены служебные AT и запросы на чтение', () => {
+    for (const c of ['ATZ', 'ATE0', 'ATL0', 'ATH0', 'ATAT1', 'ATSP0', 'ATSP5', 'ATDPN', '0100', '010C', '0142', '03', '07', '0A', '0902', '0201 00', '']) {
+      expect(isReadOnlyCommand(c), c).toBe(true)
+    }
+  })
+  it('сброс ошибок, управление, запись и диагностические сессии заблокированы', () => {
+    for (const c of ['04', '0400', '08', '0801', '05', '06', '10 03', '1003', '11 01', '14 FF 00', '27 01', '2E F1 90', '2F 01 02', '31 01', '3B 00', '3D 00', 'ATSH7E0', 'ATPP FF SV 00', 'ATWS', 'ATD', 'ATCAF0', 'ATBRD 23']) {
+      expect(isReadOnlyCommand(c), c).toBe(false)
+    }
+  })
+  it('send() не пропускает запрещённую команду в адаптер', async () => {
+    const written: string[] = []
+    const t: Transport = { connect: async () => {}, close: async () => {}, onData: () => {}, write: async (d) => { written.push(d) } }
+    const elm = new ELMService(t, fast)
+    await expect(elm.send('04')).rejects.toThrow(/только на чтение/)
+    await expect(elm.send('2E F1 90 00')).rejects.toThrow(/заблокирована/)
+    expect(written).toEqual([])
+  })
+  it('в сервисе больше нет метода сброса ошибок', () => {
+    expect((ELMService.prototype as unknown as Record<string, unknown>).clearDtcs).toBeUndefined()
+  })
+})

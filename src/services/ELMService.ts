@@ -340,7 +340,6 @@ export class MockTransport implements Transport {
       case '0142': return `41 42 ${hex(14200 + Math.sin(Date.now() / 3000) * 150, 2)}`
       case '03': return `43 ${this.opts.dtcs.length ? this.opts.dtcs.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
       case '07': return `47 ${this.opts.pending.length ? this.opts.pending.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
-      case '04': this.opts.dtcs = []; this.opts.pending = []; return '44'
       default: return 'NO DATA'
     }
   }
@@ -399,6 +398,22 @@ export function parsePid(raw: string, pid: string): number[] | null {
 
 export class ELMError extends Error {}
 
+/**
+ * ТОЛЬКО ЧТЕНИЕ. Приложение не должно ничего менять в ЭБУ и сбрасывать.
+ * Белый список: служебные AT-команды самого адаптера и запросы OBD-II на чтение
+ * (01 — текущие данные, 02 — стоп-кадр, 03/07/0A — коды ошибок, 09 — сведения об авто).
+ * Режимы 04 (сброс ошибок), 08 (управление), 05/06 и любые сервисы записи/диагностических
+ * сессий (10, 11, 14, 27, 2E, 2F, 31, 3B, 3D…) блокируются до отправки в адаптер.
+ */
+const SAFE_AT = /^AT(Z|E0|L0|H0|S0|AT1|SP[0-9A-C]|DPN|DP|I)$/
+const SAFE_OBD = /^(01|02|03|07|09|0A)([0-9A-F]{2}){0,3}$/
+
+export function isReadOnlyCommand(cmd: string): boolean {
+  const c = cmd.replace(/\s/g, '').toUpperCase()
+  // Пустая строка (bare CR) нужна только чтобы прервать поиск протокола.
+  return c === '' || SAFE_AT.test(c) || SAFE_OBD.test(c)
+}
+
 export class ELMService {
   private buffer = ''
   private pending: { resolve: (s: string) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null
@@ -432,6 +447,9 @@ export class ELMService {
 
   /** Отправить команду и дождаться приглашения «>». Команды выполняются строго по очереди. */
   send(cmd: string, timeoutMs = this.cfg.timeoutMs): Promise<string> {
+    if (!isReadOnlyCommand(cmd)) {
+      return Promise.reject(new ELMError(`Команда ${cmd} заблокирована: приложение работает только на чтение`))
+    }
     const run = () =>
       new Promise<string>((resolve, reject) => {
         this.buffer = ''
@@ -571,11 +589,6 @@ export class ELMService {
   async readPendingDtcs(): Promise<string[]> {
     const raw = await this.send('07')
     return /NO DATA|UNABLE|\?/i.test(raw) ? [] : parseDtcResponse(raw, '47')
-  }
-
-  /** Режим 04 — сброс ошибок. */
-  async clearDtcs(): Promise<void> {
-    await this.send('04')
   }
 }
 

@@ -39,17 +39,6 @@ async function scan(): Promise<void> {
   }
 }
 
-async function clear(): Promise<void> {
-  if (!confirm('Сбросить ошибки в ЭБУ? Стоп-кадр будет потерян.')) return
-  busy.value = true
-  try {
-    await getElm().clearDtcs()
-    results.value = []
-  } finally {
-    busy.value = false
-  }
-}
-
 async function copy(): Promise<void> {
   const text = results.value
     .map((r) => `${r.code} (${r.status === 'pending' ? 'временная' : 'подтверждённая'}) — ${r.title}\n` + r.causes.map((c) => `  ${c.probability}% ${c.title}`).join('\n'))
@@ -80,7 +69,6 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
     <div class="flex gap-3">
       <button class="btn flex-1" :disabled="!isConnected || busy" @click="scan">{{ busy ? 'Чтение…' : 'Считать ошибки' }}</button>
       <button class="btn-ghost" :disabled="!results.length" @click="copy">{{ copied ? 'Скопировано' : 'Копия' }}</button>
-      <button class="btn-ghost" :disabled="!isConnected || busy || !results.length" @click="clear">Сбросить</button>
     </div>
     <p v-if="!isConnected" class="text-center text-sm text-[#5f6978]">Сначала подключись к адаптеру.</p>
     <p v-if="err" class="text-sm text-bad">{{ err }}</p>
