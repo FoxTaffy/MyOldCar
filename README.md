@@ -34,3 +34,6 @@ npx cap add android && npx cap sync android && node scripts/patch-android.mjs
 cd android && ./gradlew assembleDebug   # android/app/build/outputs/apk/debug/app-debug.apk
 ```
 Телефон подключайте к Wi-Fi адаптера (192.168.0.10:35000). Если Android предлагает отключиться из-за отсутствия интернета — оставайтесь в сети.
+
+## Релиз и обновление
+Релиз `vX.Y.Z` (версия из `package.json`) с готовым `MyOldCar.apk` публикуется, когда: запушен тег `vX.Y.Z`, или запущен workflow вручную с галочкой `release`, или в сообщении коммита есть `[release]`. Для обновления поверх установленного приложения нужен постоянный ключ: секреты репозитория `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Приложение само проверяет новый релиз (вкладка «Сервис»).
