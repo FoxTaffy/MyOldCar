@@ -39,5 +39,5 @@ writeFileSync(manifestPath, xml)
 
 const drawable = join(root, 'android/app/src/main/res/drawable')
 mkdirSync(drawable, { recursive: true })
-copyFileSync(join(root, 'resources/android/ic_stat_car.xml'), join(drawable, 'ic_stat_car.xml'))
+copyFileSync(join(root, 'resources/notification/ic_stat_car.xml'), join(drawable, 'ic_stat_car.xml'))
 console.log('android: манифест и иконка уведомления обновлены')
