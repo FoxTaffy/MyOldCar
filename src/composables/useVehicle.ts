@@ -1,7 +1,9 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Capacitor } from '@capacitor/core'
 import { createElmService, type ELMService } from '@/services/ELMService'
-import { TripRecorder } from '@/services/TripRecorder'
+import { GpsService, type GpsState } from '@/services/GpsService'
+import { TripSession, type GpsFix } from '@/services/TripSession'
+import { destinationPoint } from '@/services/TripAnalysis'
 import { useGarage } from '@/composables/useGarage'
 import { DEFAULT_SETTINGS, type AppSettings, type ConnectionKind, type ConnectionMode, type SensorSnapshot } from '@/types'
 
@@ -34,6 +36,8 @@ const prefs = reactive(load(PREFS_KEY, {
   autoConnect: true,
   /** Пройден ли мастер первого запуска. */
   onboarded: false,
+  /** Фоновая запись поездок: GPS + службой переднего плана (работает при свёрнутом приложении). */
+  backgroundTracking: true,
 }))
 watch(prefs, (v) => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(v)) } catch { /* ignore */ } }, { deep: true })
 
@@ -52,7 +56,16 @@ const pollMode = ref<'normal' | 'fast' | 'off'>('normal')
 const tripLive = ref({ distanceKm: 0, fuelL: 0, movingMs: 0, stoppedMs: 0, maxSpeedKmh: 0 })
 
 const garage = useGarage()
-const recorder = new TripRecorder()
+const session = new TripSession(garage.car().id)
+const gps = new GpsService()
+const gpsState = ref<GpsState>('off')
+const gpsFix = ref<GpsFix | null>(null)
+const gpsError = ref<string | null>(null)
+/** Лампа Check Engine горит (по данным ЭБУ). */
+const milOn = ref(false)
+/** Идёт ли запись поездки. */
+const tripActive = ref(false)
+const IDLE_CHECK_MS = 30_000
 
 let elm: ELMService | null = null
 let loopToken = 0
@@ -101,17 +114,66 @@ async function pollLoop(token: number, service: ELMService): Promise<void> {
   }
 }
 
-function trackTrip(s: SensorSnapshot): void {
-  const km = recorder.feed(s.timestamp, s.speedKmh, s.mafGs)
-  const t = recorder.current
-  if (!t) return
-  tripLive.value = { distanceKm: t.distanceKm, fuelL: t.fuelL, movingMs: t.movingMs, stoppedMs: t.stoppedMs, maxSpeedKmh: t.maxSpeedKmh }
-  garage.addDistance(km, t)
+function refreshTripLive(): void {
+  const t = session.trip
+  tripActive.value = t != null
+  tripLive.value = t
+    ? { distanceKm: t.distanceKm, fuelL: t.fuelL, movingMs: t.movingMs, stoppedMs: t.stoppedMs, maxSpeedKmh: t.maxSpeedKmh }
+    : { distanceKm: 0, fuelL: 0, movingMs: 0, stoppedMs: 0, maxSpeedKmh: 0 }
+  garage.saveActive(t, session.points)
 }
 
+function trackTrip(s: SensorSnapshot): void {
+  milOn.value = s.milOn === true
+  garage.addDistance(session.feedObd(s.timestamp, s))
+  refreshTripLive()
+  if (via.value === 'mock') mockGps(s)
+}
+
+/** Завершает поездку и сохраняет её (вместе с треком). */
 function endTrip(): void {
-  garage.finishTrip(recorder.end(Date.now()))
-  tripLive.value = { distanceKm: 0, fuelL: 0, movingMs: 0, stoppedMs: 0, maxSpeedKmh: 0 }
+  garage.finishTrip(session.finish(Date.now()))
+  refreshTripLive()
+}
+
+/** Раз в 30 с проверяем: если все датчики молчат 30 минут — поездка сохраняется. */
+function idleCheck(): void {
+  const done = session.tick(Date.now())
+  if (done) {
+    garage.finishTrip(done)
+    refreshTripLive()
+  }
+}
+let idleTimer: ReturnType<typeof setInterval> | null = null
+
+session.onMil = (ev) => {
+  // Лампа только что загорелась: читаем, какие коды её включили, и запоминаем рядом с точкой на карте.
+  if (!elm?.connected) return
+  elm.readDtcs().then((codes) => { ev.codes = codes; garage.saveActive(session.trip, session.points) }).catch(() => undefined)
+}
+
+gps.onFix = (fix) => {
+  gpsFix.value = fix
+  garage.addDistance(session.feedGps(fix.t, fix))
+  refreshTripLive()
+}
+gps.onState = (st, msg) => { gpsState.value = st; gpsError.value = msg ?? null }
+
+/** Демо: имитация GPS по скорости симулятора (круговой маршрут вокруг Москвы). */
+const mock = { lat: 55.7539, lon: 37.6208, bearing: 40, at: 0 }
+function mockGps(s: SensorSnapshot): void {
+  const dt = mock.at ? Math.min(2, (s.timestamp - mock.at) / 1000) : 0
+  mock.at = s.timestamp
+  const speed = s.speedKmh ?? 0
+  mock.bearing = (mock.bearing + (speed > 5 ? dt * 4 : 0)) % 360
+  const next = destinationPoint(mock, mock.bearing, (speed / 3.6) * dt)
+  mock.lat = next.lat
+  mock.lon = next.lon
+  gps.push(mock.lat, mock.lon, speed / 3.6, 5, mock.bearing)
+}
+
+function startGps(): void {
+  if (prefs.backgroundTracking && prefs.mode !== 'mock' && prefs.onboarded) void gps.start()
 }
 
 /* ---------- подключение ---------- */
@@ -162,10 +224,11 @@ function handleLost(msg: string): void {
   const old = elm
   elm = null
   void old?.disconnect().catch(() => undefined)
-  endTrip()
+  // Поездка не обрывается: GPS продолжает запись, а если и он молчит — её закроет 30-минутный таймер.
   status.value = 'disconnected'
   via.value = null
   snapshot.value = null
+  milOn.value = false
   error.value = msg
   scheduleReconnect()
 }
@@ -185,7 +248,7 @@ async function connect(auto = false): Promise<void> {
       note.value = null
       via.value = kind
       status.value = 'connected'
-      recorder.begin(Date.now())
+      session.setCar(garage.car().id)
       svc.onLost = () => handleLost('Адаптер отключился')
       void pollLoop(++loopToken, svc)
       return
@@ -205,15 +268,19 @@ async function disconnect(): Promise<void> {
   loopToken++
   const old = elm
   elm = null
+  const wasMock = via.value === 'mock'
   await old?.disconnect().catch(() => undefined)
-  endTrip()
+  if (wasMock) endTrip() // демо-поездка заканчивается вместе с демо-подключением
   status.value = 'disconnected'
   via.value = null
   snapshot.value = null
+  milOn.value = false
 }
 
 /** Вызывать один раз при старте приложения. */
 function autoStart(): void {
+  if (!idleTimer) idleTimer = setInterval(idleCheck, IDLE_CHECK_MS)
+  startGps()
   if (prefs.onboarded && prefs.autoConnect && prefs.mode !== 'mock') void connect(true)
   if (typeof document !== 'undefined') {
     // Вернулись в приложение — пробуем сразу, не ждём таймер.
@@ -227,10 +294,12 @@ function autoStart(): void {
 
 export function useVehicle() {
   return {
-    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive,
+    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, gpsState, gpsFix, gpsError, milOn, tripActive,
+    session,
     isConnected: computed(() => status.value === 'connected'),
     connect: () => connect(false),
-    disconnect, autoStart,
+    disconnect, autoStart, startGps, endTrip,
+    stopGps: () => gps.stop(),
     getElm: (): ELMService => {
       if (!elm) throw new Error('Нет подключения к адаптеру')
       return elm

@@ -7,8 +7,8 @@ import { todayISO } from '@/utils/format'
 import type { AppSettings, ConnectionMode } from '@/types'
 
 const emit = defineEmits<{ done: [] }>()
-const { prefs, settings, connect, status } = useVehicle()
-const { garage, setOil } = useGarage()
+const { prefs, settings, connect, status, startGps } = useVehicle()
+const { garage, car, setOil } = useGarage()
 
 const step = ref(0)
 const total = 4
@@ -51,7 +51,7 @@ const toggles: { key: keyof AppSettings; label: string; hint: string }[] = [
   { key: 'coldStartOnly', label: 'Неисправность проявляется только на холодном', hint: 'Влияет на оценку модуля зажигания' },
 ]
 
-const oil = reactive({ date: garage.oil.dateISO ?? '', since: 0, interval: garage.oil.intervalKm })
+const oil = reactive({ date: car().oil.dateISO ?? '', since: 0, interval: car().oil.intervalKm })
 const summary = computed(() => {
   const m = prefs.mode
   const ble = prefs.bleName ? `Bluetooth ${prefs.bleName}` : 'Bluetooth (не выбран)'
@@ -62,6 +62,7 @@ const summary = computed(() => {
 async function finish(): Promise<void> {
   if (oil.date) setOil(oil.date, oil.since, oil.interval)
   prefs.onboarded = true
+  startGps()
   emit('done')
   if (connectNow.value && status.value === 'disconnected') await connect()
 }
@@ -104,6 +105,10 @@ async function finish(): Promise<void> {
 
         <label v-if="prefs.mode !== 'mock'" class="flex items-center gap-3 text-sm">
           <input v-model="prefs.autoConnect" type="checkbox" /> Подключаться автоматически и переподключаться при обрыве
+        </label>
+        <label v-if="prefs.mode !== 'mock'" class="flex items-start gap-3 text-sm">
+          <input v-model="prefs.backgroundTracking" type="checkbox" class="mt-1" />
+          <span>Записывать поездки в фоне (GPS + датчики, с уведомлением). Запись сама завершится, если 30 минут нет данных.</span>
         </label>
       </section>
 
