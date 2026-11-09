@@ -1,7 +1,7 @@
 {
   "name": "myoldcar",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.3.0",
+    "@capacitor/browser": "^8.0.5",
     "@capacitor/core": "^8.6.0",
     "@capawesome-team/capacitor-android-foreground-service": "^8.1.0",
     "capacitor-tcp-socket": "^8.0.0",

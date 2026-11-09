@@ -41,3 +41,32 @@ const drawable = join(root, 'android/app/src/main/res/drawable')
 mkdirSync(drawable, { recursive: true })
 copyFileSync(join(root, 'resources/notification/ic_stat_car.xml'), join(drawable, 'ic_stat_car.xml'))
 console.log('android: манифест и иконка уведомления обновлены')
+
+// Постоянная подпись: без неё каждая CI-сборка подписывается новым debug-ключом и Android
+// отказывается ставить её поверх старой (пришлось бы удалять приложение).
+// Ключ в репозиторий не кладём: CI восстанавливает его из секретов GitHub и передаёт путь/пароли через env.
+const gradlePath = join(root, 'android/app/build.gradle')
+let gradle = readFileSync(gradlePath, 'utf8')
+const ks = process.env.KEYSTORE_PATH
+if (ks && !gradle.includes('KEYSTORE_PATH')) {
+  gradle = gradle.replace(
+    /android\s*\{/,
+    `android {
+    signingConfigs {
+        debug {
+            storeFile file(System.getenv("KEYSTORE_PATH"))
+            storePassword System.getenv("KEYSTORE_PASSWORD")
+            keyAlias System.getenv("KEY_ALIAS")
+            keyPassword System.getenv("KEY_PASSWORD")
+        }
+    }`,
+  )
+} else if (!ks) {
+  console.warn('ВНИМАНИЕ: KEYSTORE_PATH не задан — APK подписан временным ключом, поверх прошлых сборок он НЕ установится')
+}
+// versionCode обязан расти от сборки к сборке, иначе обновление не установится.
+const code = process.env.VERSION_CODE || '1'
+const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${code}`).replace(/versionName\s+"[^"]*"/, `versionName "${pkg.version}"`)
+writeFileSync(gradlePath, gradle)
+console.log(`android: версия ${pkg.version} (${code}), подпись: ${ks ? 'постоянный ключ' : 'временная'}`)
