@@ -41,6 +41,8 @@ export const BUILTIN_SENSORS: SensorDef[] = [
   { id: 'map', name: 'Давление впуска', unit: 'кПа', digits: 0, pid: '0B', formula: 'A', ok: R(15, 110), warn: R(10, 130), scale: [0, 110] },
   { id: 'timing', name: 'Угол опережения', unit: '°', digits: 1, pid: '0E', formula: 'A/2-64', ok: R(-5, 45), warn: R(-15, 55), scale: [-20, 60] },
   { id: 'o2b1s1', name: 'Лямбда до катал.', unit: 'В', digits: 2, pid: '14', formula: 'A/200', ok: R(0.05, 0.95), warn: R(0, 1.1), scale: [0, 1] },
+  { id: 'o2trim1', name: 'Коррекция по ДК (бл.1)', unit: '%', digits: 1, pid: '14', formula: 'B/1.28-100', ok: R(-10, 10), warn: R(-20, 20), scale: [-30, 30], hint: 'Вторая часть ответа датчика кислорода 1' },
+  { id: 'milkm', name: 'Пробег с лампой Check', unit: 'км', digits: 0, pid: '21', formula: 'A*256+B', ok: R(0, 0), warn: R(0, 50), scale: [0, 200], hint: '0 — лампа не горела с последнего сброса' },
   { id: 'o2b1s2', name: 'Лямбда после катал.', unit: 'В', digits: 2, pid: '15', formula: 'A/200', ok: R(0.05, 0.95), warn: R(0, 1.1), scale: [0, 1] },
   { id: 'runtime', name: 'Время работы ДВС', unit: 'с', digits: 0, pid: '1F', formula: 'A*256+B', scale: [0, 3600] },
   { id: 'baro', name: 'Барометр', unit: 'кПа', digits: 0, pid: '33', formula: 'A', ok: R(85, 108), warn: R(70, 110), scale: [60, 110] },

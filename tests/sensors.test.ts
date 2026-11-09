@@ -127,3 +127,26 @@ describe('Уведомление', () => {
     expect(notificationBody({ since: 0, via: 'ble', values: {} }, 5000)).toBe('Работает 5 с')
   })
 })
+
+import { fuelSystemText, parseStatus } from '@/services/EcuStatus'
+
+describe('Статус ЭБУ (данные реальной ВАЗ-2104)', () => {
+  // 41 01 00 07 65 40 + 41 03 02 00 — как в Car Scanner: лампа выкл., кодов 0, замкнутый контур
+  const st = parseStatus([0x00, 0x07, 0x65, 0x40], [0x02, 0x00])!
+  it('лампа, коды, топливная система', () => {
+    expect(st.mil).toBe(false)
+    expect(st.dtcCount).toBe(0)
+    expect(fuelSystemText(st.fuelSystem)).toMatchObject({ level: 'ok' })
+    expect(parseStatus([0x83, 0, 0, 0], null)).toMatchObject({ mil: true, dtcCount: 3 })
+    expect(parseStatus(null, null)).toBeNull()
+  })
+  it('тесты готовности совпадают с экраном сканера', () => {
+    const m = Object.fromEntries(st.monitors.map((x) => [x.name, x]))
+    expect(m['Катализатор']).toMatchObject({ supported: true, complete: true })
+    expect(m['Обогреваемый катализатор'].supported).toBe(false)
+    expect(m['Датчик кислорода']).toMatchObject({ supported: true, complete: true })
+    expect(m['Нагреватель датчика кислорода']).toMatchObject({ supported: true, complete: false })
+    expect(m['Система EGR'].supported).toBe(false)
+    expect(m['Пропуски зажигания']).toMatchObject({ supported: true, complete: true })
+  })
+})

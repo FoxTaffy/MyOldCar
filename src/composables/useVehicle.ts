@@ -5,6 +5,7 @@ import { TripRecorder } from '@/services/TripRecorder'
 import { useGarage } from '@/composables/useGarage'
 import { useSensors } from '@/composables/useSensors'
 import { compileFormula, type Formula } from '@/services/Formula'
+import type { EcuStatus } from '@/services/EcuStatus'
 import { Notifier } from '@/services/Notifier'
 import type { SensorDef } from '@/data/sensors'
 import { DEFAULT_SETTINGS, type AppSettings, type ConnectionKind, type ConnectionMode, type SensorSnapshot } from '@/types'
@@ -66,6 +67,8 @@ const values = shallowRef<Record<string, number | null>>({})
 const history = shallowRef<Record<string, number[]>>({})
 /** Время подключения к машине (для «работает с …»). */
 const connectedAt = ref<number | null>(null)
+/** Статус ЭБУ (лампа, коды, тесты, режим топливоподачи); обновляется редко. */
+const ecuStatus = ref<EcuStatus | null>(null)
 const HISTORY_LEN = 90
 const EXTRA_PER_CYCLE = 3
 const extras: Record<string, number | null> = {}
@@ -80,6 +83,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 const RECONNECT_MS = 6000
 const MAX_ERRORS = 4
 const EXTENDED_EVERY = 4
+const STATUS_EVERY = 30
 
 /* ---------- опрос ---------- */
 
@@ -101,7 +105,9 @@ async function pollLoop(token: number, service: ELMService): Promise<void> {
       } else {
         const core = await service.readSnapshot(false)
         // Редкие PID читаем раз в несколько циклов, между ними показываем последние значения.
-        if (cycle++ % EXTENDED_EVERY === 0) ext = await service.readExtended()
+        if (cycle % EXTENDED_EVERY === 0) ext = await service.readExtended()
+        if (cycle % STATUS_EVERY === 0) ecuStatus.value = await service.readStatus()
+        cycle++
         snap = { ...core, ...ext }
       }
       if (token !== loopToken) return
@@ -171,6 +177,7 @@ function endTrip(): void {
   garage.finishTrip(recorder.end(Date.now()))
   history.value = {}
   values.value = {}
+  ecuStatus.value = null
   for (const k of Object.keys(extras)) delete extras[k]
   void notifier.stop()
   connectedAt.value = null
@@ -292,7 +299,7 @@ function autoStart(): void {
 
 export function useVehicle() {
   return {
-    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, values, history, connectedAt,
+    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, values, history, connectedAt, ecuStatus,
     liveTrip: () => recorder.snapshot(),
     isConnected: computed(() => status.value === 'connected'),
     connect: () => connect(false),

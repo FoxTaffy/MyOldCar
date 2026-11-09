@@ -3,9 +3,12 @@ import { computed, ref } from 'vue'
 import SensorCard from '@/components/SensorCard.vue'
 import { useSensors } from '@/composables/useSensors'
 import { useVehicle } from '@/composables/useVehicle'
+import { fuelSystemText } from '@/services/EcuStatus'
 import { IMPORT_EXAMPLE, levelOf } from '@/data/sensors'
 
-const { values, history, isConnected, pollMode } = useVehicle()
+const { values, history, isConnected, pollMode, ecuStatus } = useVehicle()
+const fuelSys = computed(() => fuelSystemText(ecuStatus.value?.fuelSystem ?? null))
+const TONE = { ok: 'text-ok', warn: 'text-warn', bad: 'text-bad' } as const
 const sensors = useSensors()
 pollMode.value = 'normal'
 
@@ -57,6 +60,19 @@ function doExport(): void {
 <template>
   <section class="space-y-2">
     <p v-if="!isConnected" class="border border-night-600 p-3 text-sm text-[#7b8696]">Нет связи с адаптером. Цвет датчиков появится после подключения (в демо-режиме значения симулируются).</p>
+
+    <div v-if="ecuStatus" class="card space-y-2 p-3 text-sm">
+      <div class="label">Статус ЭБУ</div>
+      <div class="flex justify-between"><span class="text-[#7b8696]">Лампа Check Engine</span><span class="font-mono" :class="ecuStatus.mil ? 'text-bad' : 'text-ok'">{{ ecuStatus.mil ? 'ГОРИТ' : 'выключена' }}</span></div>
+      <div class="flex justify-between"><span class="text-[#7b8696]">Кодов неисправностей</span><span class="font-mono" :class="ecuStatus.dtcCount ? 'text-bad' : 'text-ok'">{{ ecuStatus.dtcCount }}</span></div>
+      <div v-if="fuelSys" class="flex justify-between gap-3"><span class="shrink-0 text-[#7b8696]">Топливная система</span><span class="text-right text-xs" :class="TONE[fuelSys.level]">{{ fuelSys.text }}</span></div>
+      <details>
+        <summary class="cursor-pointer text-xs text-[#7b8696]">Тесты готовности ({{ ecuStatus.monitors.filter((m) => m.supported && m.complete).length }}/{{ ecuStatus.monitors.filter((m) => m.supported).length }})</summary>
+        <ul class="mt-1 space-y-0.5 text-xs">
+          <li v-for="m in ecuStatus.monitors.filter((x) => x.supported)" :key="m.name" class="flex justify-between"><span>{{ m.name }}</span><span :class="m.complete ? 'text-ok' : 'text-warn'">{{ m.complete ? 'завершён' : 'не завершён' }}</span></li>
+        </ul>
+      </details>
+    </div>
 
     <div class="grid grid-cols-3 gap-px border border-night-600 bg-night-600 text-center">
       <div class="bg-night-800 p-2"><div class="font-mono text-xl text-ok">{{ summary.ok }}</div><div class="label">норма</div></div>

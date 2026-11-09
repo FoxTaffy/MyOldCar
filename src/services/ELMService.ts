@@ -1,3 +1,4 @@
+import { parseStatus, type EcuStatus } from './EcuStatus'
 import { TcpSocket } from 'capacitor-tcp-socket'
 import { BleClient, type BleService, type ScanResult } from '@capacitor-community/bluetooth-le'
 import type { ConnectionKind, SensorSnapshot } from '@/types'
@@ -337,9 +338,12 @@ export class MockTransport implements Transport {
       case '010F': return `41 0F ${hex(28 + 40, 1)}`
       case '0106': return `41 06 ${hex(((this.opts.lowMaf ? 6 : 1) + 100) * 1.28, 1)}`
       case '0107': return `41 07 ${hex(((this.opts.lowMaf ? 9 : 2) + 100) * 1.28, 1)}`
+      case '0101': return '41 01 00 07 65 40'
+      case '0103': return '41 03 02 00'
+      case '0121': return '41 21 00 00'
       case '010B': return `41 0B ${hex(30 + s.speed * 0.5 + (s.rpm - 850) * 0.01, 1)}`
       case '010E': return `41 0E ${hex((12 + s.rpm * 0.004) * 2 + 128, 1)}`
-      case '0114': return `41 14 ${hex((0.45 + Math.sin(Date.now() / 400) * 0.4) * 200, 1)} FF`
+      case '0114': return `41 14 ${hex((0.45 + Math.sin(Date.now() / 400) * 0.4) * 200, 1)} 84`
       case '011F': return `41 1F ${hex((Date.now() - this.t0) / 1000, 2)}`
       case '0133': return `41 33 ${hex(99, 1)}`
       case '0146': return `41 46 ${hex(12 + 40, 1)}`
@@ -589,6 +593,11 @@ export class ELMService {
   /** Произвольный PID режима 01 (только чтение): сырые байты данных или null, если ЭБУ не поддерживает. */
   async readPidBytes(pid: string): Promise<number[] | null> {
     return this.pid(pid.toUpperCase(), true)
+  }
+
+  /** Статус ЭБУ: лампа Check Engine, число кодов, тесты готовности, режим топливоподачи. */
+  async readStatus(): Promise<EcuStatus | null> {
+    return parseStatus(await this.pid('01', true), await this.pid('03', true))
   }
 
   /** Режим 03 — сохранённые (подтверждённые) коды неисправностей. */
