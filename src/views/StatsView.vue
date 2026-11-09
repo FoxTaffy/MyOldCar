@@ -1,13 +1,27 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import TripChart from '@/components/TripChart.vue'
 import DailyChart, { type DayPoint } from '@/components/DailyChart.vue'
 import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
+import { sensorLines, tripReport, tripSummaryText } from '@/services/TripSummary'
 import { tripAvgSpeed, tripConsumption, type Trip } from '@/services/TripRecorder'
 import { dateTime, dayKey, duration, num } from '@/utils/format'
 
 const { garage, clearTrips } = useGarage()
-const { tripLive, isConnected } = useVehicle()
+const { tripLive, isConnected, liveTrip } = useVehicle()
+const open = ref<string | null>(null)
+const copied = ref<string | null>(null)
+const lineColor = { ok: 'text-ok', warn: 'text-warn', bad: 'text-bad' } as const
+const BAR = { ok: 'bg-ok', warn: 'bg-warn', bad: 'bg-bad' } as const
+
+async function share(t: Trip): Promise<void> {
+  const text = tripReport(t, garage.fuelPrice)
+  try {
+    if (navigator.share) await navigator.share({ title: 'Поездка', text })
+    else { await navigator.clipboard.writeText(text); copied.value = t.id; setTimeout(() => { copied.value = null }, 2000) }
+  } catch { /* отмена */ }
+}
 const period = ref<'7' | '30' | 'all'>('7')
 const periods = [{ k: '7', l: '7 дней' }, { k: '30', l: '30 дней' }, { k: 'all', l: 'Всё' }] as const
 
@@ -16,7 +30,7 @@ const trips = computed<Trip[]>(() => {
   const list = garage.trips.filter((t) => t.start >= from)
   const live = tripLive.value
   if (isConnected.value && live.distanceKm >= 0.05) {
-    list.push({ id: 'live', start: Date.now() - live.movingMs - live.stoppedMs, end: Date.now(), ...live })
+    list.push({ ...(liveTrip() ?? {}), id: 'live', start: Date.now() - live.movingMs - live.stoppedMs, end: Date.now(), ...live })
   }
   return list.sort((a, b) => b.start - a.start)
 })
@@ -66,17 +80,47 @@ function wipe(): void {
       <div class="card p-3"><div class="label mb-1">Пробег и расход по дням</div><DailyChart :days="days" /></div>
 
       <article v-for="t in trips" :key="t.id" class="card p-3">
-        <div class="mb-2 flex items-baseline justify-between">
-          <span class="font-mono text-sm">{{ dateTime(t.start) }}</span>
-          <span v-if="t.id === 'live'" class="label text-ok">идёт</span>
-          <span v-else class="font-mono text-xs text-[#7b8696]">{{ duration(t.end - t.start) }}</span>
+        <button class="block w-full text-left" @click="open = open === t.id ? null : t.id">
+          <div class="mb-2 flex items-baseline justify-between">
+            <span class="font-mono text-sm">{{ dateTime(t.start) }}</span>
+            <span v-if="t.id === 'live'" class="label text-ok">идёт</span>
+            <span v-else class="font-mono text-xs text-[#7b8696]">{{ duration(t.end - t.start) }} {{ open === t.id ? '▲' : '▼' }}</span>
+          </div>
+          <dl class="grid grid-cols-4 gap-2 text-center">
+            <div><dt class="label">км</dt><dd class="font-mono text-lg">{{ num(t.distanceKm, 1) }}</dd></div>
+            <div><dt class="label">км/ч</dt><dd class="font-mono text-lg">{{ num(tripAvgSpeed(t), 0) }}</dd></div>
+            <div><dt class="label">л/100</dt><dd class="font-mono text-lg">{{ num(tripConsumption(t), 1) }}</dd></div>
+            <div><dt class="label">₽</dt><dd class="font-mono text-lg">{{ num(t.fuelL * garage.fuelPrice, 0) }}</dd></div>
+          </dl>
+        </button>
+
+        <div v-if="open === t.id" class="mt-3 space-y-3 border-t border-night-600 pt-3">
+          <div class="space-y-1 text-sm leading-snug">
+            <p v-for="(l, i) in tripSummaryText(t, garage.fuelPrice)" :key="i">{{ l }}</p>
+          </div>
+
+          <TripChart v-if="t.series" :series="t.series" />
+
+          <div v-if="sensorLines(t).length">
+            <div class="label mb-1">Каждый датчик</div>
+            <ul class="divide-y divide-night-600">
+              <li v-for="l in sensorLines(t)" :key="l.id" class="py-2">
+                <div class="flex flex-wrap items-baseline justify-between gap-x-2">
+                  <span class="text-sm font-semibold" :class="lineColor[l.level]">{{ l.name }}</span>
+                  <span class="font-mono text-[11px] text-[#7b8696]">мин {{ num(l.min, 1) }} · ср {{ num(l.avg, 1) }} · макс {{ num(l.max, 1) }} {{ l.unit }}</span>
+                </div>
+                <div class="my-1 flex h-1.5 w-full overflow-hidden bg-night-600">
+                  <span :class="BAR.ok" :style="{ width: l.ok * 100 + '%' }" />
+                  <span :class="BAR.warn" :style="{ width: l.warn * 100 + '%' }" />
+                  <span :class="BAR.bad" :style="{ width: l.bad * 100 + '%' }" />
+                </div>
+                <p class="text-xs text-[#aab3c0]">{{ l.text }}</p>
+              </li>
+            </ul>
+          </div>
+
+          <button class="btn-ghost w-full !py-2 !text-xs" @click="share(t)">{{ copied === t.id ? 'Скопировано' : 'Поделиться сводкой' }}</button>
         </div>
-        <dl class="grid grid-cols-4 gap-2 text-center">
-          <div><dt class="label">км</dt><dd class="font-mono text-lg">{{ num(t.distanceKm, 1) }}</dd></div>
-          <div><dt class="label">км/ч</dt><dd class="font-mono text-lg">{{ num(tripAvgSpeed(t), 0) }}</dd></div>
-          <div><dt class="label">л/100</dt><dd class="font-mono text-lg">{{ num(tripConsumption(t), 1) }}</dd></div>
-          <div><dt class="label">₽</dt><dd class="font-mono text-lg">{{ num(t.fuelL * garage.fuelPrice, 0) }}</dd></div>
-        </dl>
       </article>
 
       <button class="btn-ghost w-full" @click="wipe">Очистить историю</button>

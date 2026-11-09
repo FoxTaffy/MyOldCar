@@ -337,6 +337,13 @@ export class MockTransport implements Transport {
       case '010F': return `41 0F ${hex(28 + 40, 1)}`
       case '0106': return `41 06 ${hex(((this.opts.lowMaf ? 6 : 1) + 100) * 1.28, 1)}`
       case '0107': return `41 07 ${hex(((this.opts.lowMaf ? 9 : 2) + 100) * 1.28, 1)}`
+      case '010B': return `41 0B ${hex(30 + s.speed * 0.5 + (s.rpm - 850) * 0.01, 1)}`
+      case '010E': return `41 0E ${hex((12 + s.rpm * 0.004) * 2 + 128, 1)}`
+      case '0114': return `41 14 ${hex((0.45 + Math.sin(Date.now() / 400) * 0.4) * 200, 1)} FF`
+      case '011F': return `41 1F ${hex((Date.now() - this.t0) / 1000, 2)}`
+      case '0133': return `41 33 ${hex(99, 1)}`
+      case '0146': return `41 46 ${hex(12 + 40, 1)}`
+      case '012F': return `41 2F ${hex(0.62 * 255, 1)}`
       case '0142': return `41 42 ${hex(14200 + Math.sin(Date.now() / 3000) * 150, 2)}`
       case '03': return `43 ${this.opts.dtcs.length ? this.opts.dtcs.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
       case '07': return `47 ${this.opts.pending.length ? this.opts.pending.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
@@ -577,6 +584,11 @@ export class ELMService {
       throttlePct: thr ? (thr[0] * 100) / 255 : null,
       voltage: volt && volt.length >= 2 ? (volt[0] * 256 + volt[1]) / 1000 : null,
     }
+  }
+
+  /** Произвольный PID режима 01 (только чтение): сырые байты данных или null, если ЭБУ не поддерживает. */
+  async readPidBytes(pid: string): Promise<number[] | null> {
+    return this.pid(pid.toUpperCase(), true)
   }
 
   /** Режим 03 — сохранённые (подтверждённые) коды неисправностей. */

@@ -7,6 +7,7 @@ const v = useVehicle()
 const showSetup = ref(!v.prefs.onboarded)
 const tabs = [
   { to: '/', label: 'Панель' },
+  { to: '/sensors', label: 'Датчики' },
   { to: '/diagnostics', label: 'Ошибки' },
   { to: '/performance', label: '0–100' },
   { to: '/stats', label: 'Поездки' },
@@ -40,8 +41,8 @@ const statusText = computed(() =>
 
     <OnboardingWizard v-if="showSetup" @done="showSetup = false" />
 
-    <nav class="grid grid-cols-5 border-t border-night-600 bg-night-900 pb-[env(safe-area-inset-bottom)]">
-      <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="border-t-2 border-transparent py-3 text-center text-[10px] font-semibold uppercase tracking-[0.1em] text-[#7b8696]" active-class="!border-accent !text-[#d5dae2]">
+    <nav class="grid grid-cols-6 border-t border-night-600 bg-night-900 pb-[env(safe-area-inset-bottom)]">
+      <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="border-t-2 border-transparent py-3 text-center text-[9px] font-semibold uppercase tracking-[0.1em] text-[#7b8696]" active-class="!border-accent !text-[#d5dae2]">
         {{ t.label }}
       </RouterLink>
     </nav>

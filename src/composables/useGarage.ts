@@ -31,8 +31,12 @@ function load(): Garage {
 const garage = reactive<Garage>(load())
 let timer: ReturnType<typeof setTimeout> | null = null
 
+/** Источник актуальной незавершённой поездки; копию со статистикой делаем только при записи на диск. */
+let activeSource: (() => Trip | null) | null = null
+
 function saveNow(): void {
   timer = null
+  if (activeSource) garage.activeTrip = activeSource()
   try { localStorage.setItem(KEY, JSON.stringify(garage)) } catch { /* ignore */ }
 }
 /** Запись не чаще раза в 5 с: опрос идёт несколько раз в секунду. */
@@ -48,12 +52,13 @@ export function useGarage() {
   return {
     garage,
     oil: () => oilStatus(garage.oil, garage.trackedTotalKm),
-    addDistance(km: number, active: Trip | null): void {
+    addDistance(km: number, active: (() => Trip | null) | null): void {
       garage.trackedTotalKm += km
-      garage.activeTrip = active ? { ...active } : null
+      activeSource = active
       scheduleSave()
     },
     finishTrip(trip: Trip | null): void {
+      activeSource = null
       garage.activeTrip = null
       if (trip) {
         garage.trips.push(trip)

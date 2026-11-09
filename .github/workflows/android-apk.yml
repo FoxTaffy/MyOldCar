@@ -37,6 +37,8 @@ jobs:
       # Папка android/ не хранится в репозитории — генерируем при сборке.
       - run: npx cap add android
       - run: npx cap sync android
+      - name: Foreground-сервис (постоянное уведомление)
+        run: node scripts/patch-android.mjs
 
       - name: Build debug APK
         working-directory: android

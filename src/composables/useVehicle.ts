@@ -1,8 +1,12 @@
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { Capacitor } from '@capacitor/core'
 import { createElmService, type ELMService } from '@/services/ELMService'
 import { TripRecorder } from '@/services/TripRecorder'
 import { useGarage } from '@/composables/useGarage'
+import { useSensors } from '@/composables/useSensors'
+import { compileFormula, type Formula } from '@/services/Formula'
+import { Notifier } from '@/services/Notifier'
+import type { SensorDef } from '@/data/sensors'
 import { DEFAULT_SETTINGS, type AppSettings, type ConnectionKind, type ConnectionMode, type SensorSnapshot } from '@/types'
 
 /* Модульный синглтон: одно соединение с адаптером на всё приложение. */
@@ -52,7 +56,21 @@ const pollMode = ref<'normal' | 'fast' | 'off'>('normal')
 const tripLive = ref({ distanceKm: 0, fuelL: 0, movingMs: 0, stoppedMs: 0, maxSpeedKmh: 0 })
 
 const garage = useGarage()
-const recorder = new TripRecorder()
+const sensors = useSensors()
+const recorder = new TripRecorder(() => sensors.allDefs.value)
+const notifier = new Notifier()
+
+/** Значения всех датчиков по id (ядро из снимка + PID-датчики), обновляются каждый цикл. */
+const values = shallowRef<Record<string, number | null>>({})
+/** Последние ~90 точек каждого датчика для мини-графиков. */
+const history = shallowRef<Record<string, number[]>>({})
+/** Время подключения к машине (для «работает с …»). */
+const connectedAt = ref<number | null>(null)
+const HISTORY_LEN = 90
+const EXTRA_PER_CYCLE = 3
+const extras: Record<string, number | null> = {}
+const formulas = new Map<string, { src: string; fn: Formula | null }>()
+let extraCursor = 0
 
 let elm: ELMService | null = null
 let loopToken = 0
@@ -89,6 +107,7 @@ async function pollLoop(token: number, service: ELMService): Promise<void> {
       if (token !== loopToken) return
       errors = 0
       snapshot.value = snap
+      if (pollMode.value === 'normal') await pollExtras(service)
       trackTrip(snap)
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
@@ -101,16 +120,60 @@ async function pollLoop(token: number, service: ELMService): Promise<void> {
   }
 }
 
+/** Опрос PID-датчиков из каталога (встроенных и импортированных) по несколько штук за цикл. */
+async function pollExtras(service: ELMService): Promise<void> {
+  const defs = sensors.allDefs.value.filter((d) => d.pid && d.formula)
+  if (!defs.length) return
+  for (let k = 0; k < Math.min(EXTRA_PER_CYCLE, defs.length); k++) {
+    const def = defs[extraCursor++ % defs.length]
+    let f = formulas.get(def.id)
+    if (!f || f.src !== def.formula) {
+      let fn: Formula | null = null
+      try { fn = compileFormula(def.formula!) } catch { /* битая формула — датчик молчит */ }
+      f = { src: def.formula!, fn }
+      formulas.set(def.id, f)
+    }
+    if (!f.fn) { extras[def.id] = null; continue }
+    const bytes = await service.readPidBytes(def.pid!)
+    const v = bytes && bytes.length ? f.fn(bytes) : NaN
+    extras[def.id] = Number.isNaN(v) ? null : v
+  }
+}
+
+function buildValues(s: SensorSnapshot, defs: SensorDef[]): Record<string, number | null> {
+  const out: Record<string, number | null> = {}
+  for (const d of defs) {
+    if (d.field) out[d.id] = (s[d.field] as number | null | undefined) ?? null
+    else out[d.id] = extras[d.id] ?? null
+  }
+  return out
+}
+
 function trackTrip(s: SensorSnapshot): void {
-  const km = recorder.feed(s.timestamp, s.speedKmh, s.mafGs)
+  const vals = buildValues(s, sensors.allDefs.value)
+  values.value = vals
+  const h = { ...history.value }
+  for (const [id, v] of Object.entries(vals)) {
+    if (v == null) continue
+    const arr = (h[id] ?? []).concat(v)
+    if (arr.length > HISTORY_LEN) arr.shift()
+    h[id] = arr
+  }
+  history.value = h
+  const km = recorder.feed(s.timestamp, s.speedKmh, s.mafGs, vals)
   const t = recorder.current
   if (!t) return
   tripLive.value = { distanceKm: t.distanceKm, fuelL: t.fuelL, movingMs: t.movingMs, stoppedMs: t.stoppedMs, maxSpeedKmh: t.maxSpeedKmh }
-  garage.addDistance(km, t)
+  garage.addDistance(km, () => recorder.snapshot())
 }
 
 function endTrip(): void {
   garage.finishTrip(recorder.end(Date.now()))
+  history.value = {}
+  values.value = {}
+  for (const k of Object.keys(extras)) delete extras[k]
+  void notifier.stop()
+  connectedAt.value = null
   tripLive.value = { distanceKm: 0, fuelL: 0, movingMs: 0, stoppedMs: 0, maxSpeedKmh: 0 }
 }
 
@@ -186,6 +249,8 @@ async function connect(auto = false): Promise<void> {
       via.value = kind
       status.value = 'connected'
       recorder.begin(Date.now())
+      connectedAt.value = Date.now()
+      void notifier.start(() => ({ since: connectedAt.value ?? Date.now(), values: values.value, via: kind }))
       svc.onLost = () => handleLost('Адаптер отключился')
       void pollLoop(++loopToken, svc)
       return
@@ -227,7 +292,8 @@ function autoStart(): void {
 
 export function useVehicle() {
   return {
-    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive,
+    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, values, history, connectedAt,
+    liveTrip: () => recorder.snapshot(),
     isConnected: computed(() => status.value === 'connected'),
     connect: () => connect(false),
     disconnect, autoStart,

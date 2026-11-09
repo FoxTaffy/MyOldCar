@@ -13,6 +13,7 @@
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.3.0",
     "@capacitor/core": "^8.6.0",
+    "@capawesome-team/capacitor-android-foreground-service": "^8.1.0",
     "capacitor-tcp-socket": "^8.0.0",
     "vue": "^3.5.13",
     "vue-router": "^4.4.5"
