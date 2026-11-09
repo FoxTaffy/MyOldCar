@@ -74,7 +74,9 @@ jobs:
 
       - name: Read version
         id: ver
-        run: echo "v=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          echo "v=$VER" >> "$GITHUB_OUTPUT"
 
       - name: Name the APK
         run: cp android/app/build/outputs/apk/debug/app-debug.apk MyOldCar.apk
