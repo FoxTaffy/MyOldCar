@@ -3,7 +3,7 @@ import type { AppSettings, CauseResult, DiagnosisResult, SensorSnapshot } from '
 
 /* ---------- Формат JSON-матрицы ---------- */
 
-type SensorKey = 'rpm' | 'speedKmh' | 'coolantTempC' | 'mafGs' | 'mafKgh' | 'voltage'
+type SensorKey = 'rpm' | 'speedKmh' | 'coolantTempC' | 'mafGs' | 'mafKgh' | 'voltage' | 'throttlePct' | 'loadPct' | 'intakeTempC' | 'stft' | 'ltft'
 type Op = '<' | '<=' | '>' | '>=' | '=='
 
 /** Условие: либо сравнение датчика, либо флаг настроек, либо состояние двигателя. */

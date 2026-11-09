@@ -6,6 +6,8 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
     { path: '/diagnostics', name: 'diagnostics', component: () => import('@/views/DiagnosticsView.vue') },
+    { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },
+    { path: '/service', name: 'service', component: () => import('@/views/ServiceView.vue') },
     { path: '/performance', name: 'performance', component: () => import('@/views/PerformanceView.vue') },
   ],
 })

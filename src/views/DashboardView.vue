@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import GaugeTile from '@/components/GaugeTile.vue'
+import OilGauge from '@/components/OilGauge.vue'
+import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { Ema, fuelLitersPer100Km, fuelLitersPerHour } from '@/services/FuelCalculator'
+import { duration, num } from '@/utils/format'
 import type { Level } from '@/types'
 
-const { snapshot, pollMode, isConnected } = useVehicle()
+const { snapshot, pollMode, isConnected, tripLive } = useVehicle()
+const { garage, oil } = useGarage()
 pollMode.value = 'normal'
 
 const fmt = (n: number | null | undefined, digits = 0): string => (n == null || Number.isNaN(n) ? '—' : n.toFixed(digits))
@@ -30,20 +34,72 @@ watch(snapshot, (s) => {
 })
 
 const fuel = computed(() => {
-  // Читаем snapshot, чтобы computed пересчитывался вместе с watch.
-  void snapshot.value
+  void snapshot.value // пересчёт вместе с watch
   return l100Value !== null
     ? { value: fmt(l100Value, 1), unit: 'л/100 км', level: fuelLevel(l100Value) }
     : { value: fmt(lhValue, 1), unit: 'л/ч (стоим)', level: 'ok' as Level }
 })
+
+/** Допустимые значения: коррекции топливоподачи в пределах ±10% — норма, до ±20% — внимание. */
+const trimLevel = (v: number | null | undefined): Level => (v == null || Math.abs(v) <= 10 ? 'ok' : Math.abs(v) <= 20 ? 'warn' : 'bad')
+const voltLevel = (v: number | null | undefined): Level => (v == null || (v >= 13.2 && v <= 14.8) ? 'ok' : v >= 12.4 ? 'warn' : 'bad')
+const color = (l: Level) => ({ ok: 'text-[#d5dae2]', warn: 'text-warn', bad: 'text-bad' }[l])
+
+const rows = computed(() => {
+  const s = snapshot.value
+  return [
+    { k: 'ДМРВ', v: s?.mafGs != null ? `${num(s.mafGs, 2)} г/с · ${num(s.mafGs * 3.6, 1)} кг/ч` : '—', l: 'ok' as Level },
+    { k: 'Нагрузка', v: s?.loadPct != null ? `${num(s.loadPct, 0)} %` : '—', l: 'ok' as Level },
+    { k: 'Дроссель', v: s?.throttlePct != null ? `${num(s.throttlePct, 0)} %` : '—', l: 'ok' as Level },
+    { k: 'Напряжение', v: s?.voltage != null ? `${num(s.voltage, 1)} В` : '—', l: voltLevel(s?.voltage) },
+    { k: 'Темп. впуска', v: s?.intakeTempC != null ? `${num(s.intakeTempC, 0)} °C` : '—', l: 'ok' as Level },
+    { k: 'Коррекция STFT', v: s?.stft != null ? `${num(s.stft, 1)} %` : '—', l: trimLevel(s?.stft) },
+    { k: 'Коррекция LTFT', v: s?.ltft != null ? `${num(s.ltft, 1)} %` : '—', l: trimLevel(s?.ltft) },
+  ]
+})
+
+const trip = computed(() => {
+  const t = tripLive.value
+  return {
+    km: t.distanceKm,
+    avg: t.movingMs ? t.distanceKm / (t.movingMs / 3_600_000) : 0,
+    l100: t.distanceKm >= 0.5 ? (t.fuelL / t.distanceKm) * 100 : null,
+    time: t.movingMs + t.stoppedMs,
+    cost: t.fuelL * garage.fuelPrice,
+  }
+})
 </script>
 
 <template>
-  <p v-if="!isConnected" class="mb-3 border border-night-600 p-3 text-sm text-[#7b8696]">Нет связи с адаптером. Нажмите «Подключить»; в режиме Mock данные симулируются.</p>
+  <p v-if="!isConnected" class="mb-2 border border-night-600 p-3 text-sm text-[#7b8696]">Нет связи с адаптером. Нажмите «Подключить»; в демо-режиме данные симулируются.</p>
   <div class="grid grid-cols-2 gap-2">
     <GaugeTile label="Скорость" :value="fmt(snapshot?.speedKmh)" unit="км/ч" :level="speedLevel(snapshot?.speedKmh ?? null)" />
     <GaugeTile label="Обороты" :value="fmt(snapshot?.rpm)" unit="об/мин" :level="rpmLevel(snapshot?.rpm ?? null)" />
     <GaugeTile label="Темп. ОЖ" :value="fmt(snapshot?.coolantTempC)" unit="°C" :level="tempLevel(snapshot?.coolantTempC ?? null)" />
-    <GaugeTile label="Расход" :value="fuel.value" :unit="fuel.unit" :level="fuel.level" :hint="snapshot?.mafGs != null ? `ДМРВ ${fmt(snapshot.mafGs * 3.6, 1)} кг/ч` : undefined" />
+    <GaugeTile label="Расход" :value="fuel.value" :unit="fuel.unit" :level="fuel.level" />
   </div>
+
+  <div class="card mt-2 p-3">
+    <div class="label mb-2">Датчики</div>
+    <dl class="divide-y divide-night-600 text-sm">
+      <div v-for="r in rows" :key="r.k" class="flex justify-between py-1.5">
+        <dt class="text-[#7b8696]">{{ r.k }}</dt>
+        <dd class="font-mono tabular-nums" :class="color(r.l)">{{ r.v }}</dd>
+      </div>
+    </dl>
+  </div>
+
+  <div class="card mt-2 p-3">
+    <div class="label mb-2">Текущая поездка</div>
+    <dl class="grid grid-cols-4 gap-2 text-center">
+      <div><dt class="label">км</dt><dd class="font-mono text-lg">{{ num(trip.km, 1) }}</dd></div>
+      <div><dt class="label">км/ч ср.</dt><dd class="font-mono text-lg">{{ num(trip.avg, 0) }}</dd></div>
+      <div><dt class="label">л/100</dt><dd class="font-mono text-lg">{{ num(trip.l100, 1) }}</dd></div>
+      <div><dt class="label">время</dt><dd class="font-mono text-lg">{{ duration(trip.time) }}</dd></div>
+    </dl>
+  </div>
+
+  <RouterLink to="/service" class="card mt-2 block p-3">
+    <OilGauge :status="oil()" :interval-km="garage.oil.intervalKm" :changed-at="garage.oil.dateISO" />
+  </RouterLink>
 </template>

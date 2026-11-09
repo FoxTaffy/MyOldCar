@@ -1,5 +1,6 @@
 import { TcpSocket } from 'capacitor-tcp-socket'
-import type { SensorSnapshot } from '@/types'
+import { BleClient, type BleService } from '@capacitor-community/bluetooth-le'
+import type { ConnectionKind, SensorSnapshot } from '@/types'
 
 /* ------------------------------------------------------------------ */
 /* Транспорт                                                           */
@@ -10,6 +11,8 @@ export interface Transport {
   connect(): Promise<void>
   write(data: string): Promise<void>
   onData(cb: (chunk: string) => void): void
+  /** Необязательно: уведомление о неожиданном разрыве связи. */
+  onClose?(cb: () => void): void
   close(): Promise<void>
 }
 
@@ -82,6 +85,110 @@ export class CapacitorTcpTransport implements Transport {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Bluetooth LE                                                        */
+/* ------------------------------------------------------------------ */
+
+/** Подмножество BleClient, нужное транспорту (для подмены в тестах). */
+export interface BleLike {
+  connect(id: string, onDisconnect?: (id: string) => void, o?: { timeout?: number }): Promise<void>
+  disconnect(id: string): Promise<void>
+  getServices(id: string): Promise<BleService[]>
+  startNotifications(id: string, svc: string, ch: string, cb: (v: DataView) => void): Promise<void>
+  stopNotifications(id: string, svc: string, ch: string): Promise<void>
+  write(id: string, svc: string, ch: string, v: DataView): Promise<void>
+  writeWithoutResponse(id: string, svc: string, ch: string, v: DataView): Promise<void>
+}
+
+/** Сервисы, которые обычно используют BLE-адаптеры ELM327 (нужны вебу; на Android — подсказка). */
+export const ELM_BLE_SERVICES = [
+  '0000fff0-0000-1000-8000-00805f9b34fb',
+  '000018f0-0000-1000-8000-00805f9b34fb',
+  'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+]
+
+export interface ElmChars {
+  service: string
+  notify: string
+  write: string
+  writeNoResponse: boolean
+}
+
+const STANDARD_SERVICE = /^0000(1800|1801|180a)-/i
+
+/** Находит пару характеристик «уведомления + запись» у адаптера, не зная его модели. */
+export function pickElmChars(services: BleService[]): ElmChars | null {
+  for (const svc of services) {
+    if (STANDARD_SERVICE.test(svc.uuid)) continue
+    const notify = svc.characteristics.find((c) => c.properties.notify || c.properties.indicate)
+    if (!notify) continue
+    const writers = svc.characteristics.filter((c) => c.properties.write || c.properties.writeWithoutResponse)
+    const write = writers.find((c) => c.uuid !== notify.uuid) ?? writers[0]
+    if (!write) continue
+    return { service: svc.uuid, notify: notify.uuid, write: write.uuid, writeNoResponse: !write.properties.write && !!write.properties.writeWithoutResponse }
+  }
+  return null
+}
+
+export interface PairedDevice { deviceId: string; name: string }
+
+/** Системное окно выбора устройства (первое сопряжение). Запрашивает разрешения Bluetooth. */
+export async function pickBleDevice(): Promise<PairedDevice> {
+  await BleClient.initialize()
+  const d = await BleClient.requestDevice({ optionalServices: ELM_BLE_SERVICES })
+  return { deviceId: d.deviceId, name: d.name ?? 'OBDII' }
+}
+
+export class BleTransport implements Transport {
+  private cb: (chunk: string) => void = () => {}
+  private closeCb: () => void = () => {}
+  private chars: ElmChars | null = null
+  private manual = false
+  private decoder = new TextDecoder()
+
+  constructor(
+    private readonly deviceId: string,
+    private readonly ble: BleLike = BleClient as unknown as BleLike,
+  ) {}
+
+  async connect(): Promise<void> {
+    this.manual = false
+    await this.ble.connect(this.deviceId, () => { if (!this.manual) this.closeCb() }, { timeout: 8000 })
+    const chars = pickElmChars(await this.ble.getServices(this.deviceId))
+    if (!chars) {
+      await this.ble.disconnect(this.deviceId).catch(() => undefined)
+      throw new Error('Не найдены характеристики ELM327 у этого Bluetooth-устройства')
+    }
+    this.chars = chars
+    await this.ble.startNotifications(this.deviceId, chars.service, chars.notify, (v) => this.cb(this.decoder.decode(v)))
+  }
+
+  async write(data: string): Promise<void> {
+    const c = this.chars
+    if (!c) throw new Error('Bluetooth не подключён')
+    const bytes = new TextEncoder().encode(data)
+    // Пакеты BLE по умолчанию — 20 байт; команды ELM короче, но режем на всякий случай.
+    for (let i = 0; i < bytes.length; i += 20) {
+      const view = new DataView(bytes.slice(i, i + 20).buffer)
+      if (c.writeNoResponse) await this.ble.writeWithoutResponse(this.deviceId, c.service, c.write, view)
+      else await this.ble.write(this.deviceId, c.service, c.write, view)
+    }
+  }
+  onData(cb: (chunk: string) => void): void {
+    this.cb = cb
+  }
+  onClose(cb: () => void): void {
+    this.closeCb = cb
+  }
+  async close(): Promise<void> {
+    this.manual = true
+    const c = this.chars
+    this.chars = null
+    if (c) await this.ble.stopNotifications(this.deviceId, c.service, c.notify).catch(() => undefined)
+    await this.ble.disconnect(this.deviceId).catch(() => undefined)
+  }
+}
+
 /** WebSocket-вариант: для ELM-адаптеров/прокси, которые выставляют ws:// мост. */
 export class WebSocketTransport implements Transport {
   private ws: WebSocket | null = null
@@ -114,6 +221,8 @@ export class WebSocketTransport implements Transport {
 
 export interface MockOptions {
   dtcs: string[]
+  /** Временные (pending) ошибки — режим 07. */
+  pending: string[]
   /** Имитировать «подсос воздуха»: низкий ДМРВ на холостом. */
   lowMaf: boolean
 }
@@ -121,7 +230,7 @@ export interface MockOptions {
 export class MockTransport implements Transport {
   private cb: (chunk: string) => void = () => {}
   private t0 = Date.now()
-  constructor(private readonly opts: MockOptions = { dtcs: ['P0171'], lowMaf: true }) {}
+  constructor(private readonly opts: MockOptions = { dtcs: ['P0171', 'P0301'], pending: ['P0123'], lowMaf: true }) {}
 
   async connect(): Promise<void> {
     this.t0 = Date.now()
@@ -158,12 +267,15 @@ export class MockTransport implements Transport {
       case '010D': return `41 0D ${hex(s.speed, 1)}`
       case '0105': return `41 05 ${hex(s.temp + 40, 1)}`
       case '0110': return `41 10 ${hex(s.maf * 100, 2)}`
-      case '03': {
-        if (!this.opts.dtcs.length) return '43 00 00 00 00 00 00'
-        const bytes = this.opts.dtcs.map(encodeDtc).join(' ')
-        return `43 ${bytes}`
-      }
-      case '04': this.opts.dtcs = []; return '44'
+      case '0104': return `41 04 ${hex((Math.min(100, 18 + s.speed * 0.4 + (s.rpm - 850) * 0.006) / 100) * 255, 1)}`
+      case '0111': return `41 11 ${hex((Math.min(100, 12 + s.speed * 0.5) / 100) * 255, 1)}`
+      case '010F': return `41 0F ${hex(28 + 40, 1)}`
+      case '0106': return `41 06 ${hex(((this.opts.lowMaf ? 6 : 1) + 100) * 1.28, 1)}`
+      case '0107': return `41 07 ${hex(((this.opts.lowMaf ? 9 : 2) + 100) * 1.28, 1)}`
+      case '0142': return `41 42 ${hex(14200 + Math.sin(Date.now() / 3000) * 150, 2)}`
+      case '03': return `43 ${this.opts.dtcs.length ? this.opts.dtcs.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
+      case '07': return `47 ${this.opts.pending.length ? this.opts.pending.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
+      case '04': this.opts.dtcs = []; this.opts.pending = []; return '44'
       default: return 'NO DATA'
     }
   }
@@ -184,13 +296,13 @@ export function encodeDtc(code: string): string {
 }
 
 /** Разбор ответа на режим 03 → ['P0171', ...]. Устойчив к переносам строк и «43» в начале каждой строки. */
-export function parseDtcResponse(raw: string): string[] {
+export function parseDtcResponse(raw: string, header = '43'): string[] {
   const codes: string[] = []
   for (const line of raw.split(/[\r\n]+/)) {
     const bytes = line.replace(/[^0-9A-Fa-f]/g, ' ').trim().split(/\s+/).filter(Boolean)
     // Допускаем и «43 01 71…», и склеенное «4301710000…».
     const flat = bytes.join('')
-    if (!flat.startsWith('43')) continue
+    if (!flat.startsWith(header)) continue
     const body = flat.slice(2)
     for (let i = 0; i + 4 <= body.length; i += 4) {
       const word = body.slice(i, i + 4)
@@ -233,7 +345,14 @@ export class ELMService {
     private readonly cfg: ElmConfig = DEFAULT_ELM_CONFIG,
   ) {
     transport.onData((chunk) => this.onChunk(chunk))
+    transport.onClose?.(() => {
+      this.connected = false
+      this.onLost?.()
+    })
   }
+
+  /** Вызывается при неожиданном разрыве (например, адаптер выключили). */
+  onLost?: () => void
 
   private onChunk(chunk: string): void {
     this.buffer += chunk
@@ -247,14 +366,14 @@ export class ELMService {
   }
 
   /** Отправить команду и дождаться приглашения «>». Команды выполняются строго по очереди. */
-  send(cmd: string): Promise<string> {
+  send(cmd: string, timeoutMs = this.cfg.timeoutMs): Promise<string> {
     const run = () =>
       new Promise<string>((resolve, reject) => {
         this.buffer = ''
         const timer = setTimeout(() => {
           this.pending = null
           reject(new ELMError(`Таймаут ответа на ${cmd}`))
-        }, this.cfg.timeoutMs)
+        }, timeoutMs)
         this.pending = { resolve, reject, timer }
         this.transport.write(cmd + '\r').catch((e) => {
           clearTimeout(timer)
@@ -273,7 +392,7 @@ export class ELMService {
     // Для ВАЗ с М73 фактически будет ISO 14230 (KWP2000) или ISO 9141 — выбирает адаптер.
     for (const cmd of ['ATZ', 'ATE0', 'ATL0', 'ATSP0']) await this.send(cmd)
     // Первый запрос запускает определение протокола (может занять несколько секунд).
-    await this.send('0100').catch(() => undefined)
+    await this.send('0100', 15000).catch(() => undefined)
     this.connected = true
   }
 
@@ -282,9 +401,17 @@ export class ELMService {
     await this.transport.close()
   }
 
-  private async pid(pid: string): Promise<number[] | null> {
+  /** Необязательные PID, которые ЭБУ не поддержал, — больше не опрашиваем. */
+  private unsupported = new Set<string>()
+
+  private async pid(pid: string, optional = false): Promise<number[] | null> {
+    if (optional && this.unsupported.has(pid)) return null
     const raw = await this.send('01' + pid)
-    return /NO DATA|UNABLE|ERROR|\?/i.test(raw) ? null : parsePid(raw, pid)
+    if (/NO DATA|UNABLE|ERROR|\?/i.test(raw)) {
+      if (optional) this.unsupported.add(pid)
+      return null
+    }
+    return parsePid(raw, pid)
   }
 
   async readRpm(): Promise<number | null> {
@@ -305,18 +432,43 @@ export class ELMService {
     return d && d.length >= 2 ? (d[0] * 256 + d[1]) / 100 : null
   }
 
-  async readSnapshot(): Promise<SensorSnapshot> {
+  /** Основные показания; extended=true добавляет редкие PID (опрашиваются реже). */
+  async readSnapshot(extended = false): Promise<SensorSnapshot> {
     const rpm = await this.readRpm()
     const speedKmh = await this.readSpeed()
     const coolantTempC = await this.readCoolantTemp()
     const mafGs = await this.readMaf()
-    return { rpm, speedKmh, coolantTempC, mafGs, timestamp: Date.now() }
+    const snap: SensorSnapshot = { rpm, speedKmh, coolantTempC, mafGs, timestamp: Date.now() }
+    return extended ? { ...snap, ...(await this.readExtended()) } : snap
   }
 
-  /** Режим 03 — сохранённые коды неисправностей. */
+  async readExtended(): Promise<Partial<SensorSnapshot>> {
+    const load = await this.pid('04', true)
+    const stft = await this.pid('06', true)
+    const ltft = await this.pid('07', true)
+    const intake = await this.pid('0F', true)
+    const thr = await this.pid('11', true)
+    const volt = await this.pid('42', true)
+    return {
+      loadPct: load ? (load[0] * 100) / 255 : null,
+      stft: stft ? (stft[0] * 100) / 128 - 100 : null,
+      ltft: ltft ? (ltft[0] * 100) / 128 - 100 : null,
+      intakeTempC: intake ? intake[0] - 40 : null,
+      throttlePct: thr ? (thr[0] * 100) / 255 : null,
+      voltage: volt && volt.length >= 2 ? (volt[0] * 256 + volt[1]) / 1000 : null,
+    }
+  }
+
+  /** Режим 03 — сохранённые (подтверждённые) коды неисправностей. */
   async readDtcs(): Promise<string[]> {
     const raw = await this.send('03')
     return /NO DATA/i.test(raw) ? [] : parseDtcResponse(raw)
+  }
+
+  /** Режим 07 — временные (ожидающие подтверждения) коды. Не все ЭБУ поддерживают. */
+  async readPendingDtcs(): Promise<string[]> {
+    const raw = await this.send('07')
+    return /NO DATA|UNABLE|\?/i.test(raw) ? [] : parseDtcResponse(raw, '47')
   }
 
   /** Режим 04 — сброс ошибок. */
@@ -325,9 +477,20 @@ export class ELMService {
   }
 }
 
-/** Фабрика: в dev без железа — Mock, на устройстве — TCP. Переопределяется ?mock=0/1. */
-export function createElmService(opts: { mock: boolean; cfg?: Partial<ElmConfig> }): ELMService {
-  const cfg = { ...DEFAULT_ELM_CONFIG, ...opts.cfg }
-  const transport = opts.mock ? new MockTransport() : new CapacitorTcpTransport(cfg)
-  return new ELMService(transport, cfg)
+export interface ConnectTarget {
+  kind: ConnectionKind
+  host?: string
+  port?: number
+  bleId?: string
+}
+
+/** Фабрика сервиса под выбранный способ связи. */
+export function createElmService(t: ConnectTarget): ELMService {
+  const cfg = { ...DEFAULT_ELM_CONFIG, host: t.host ?? DEFAULT_ELM_CONFIG.host, port: t.port ?? DEFAULT_ELM_CONFIG.port }
+  if (t.kind === 'mock') return new ELMService(new MockTransport(), cfg)
+  if (t.kind === 'ble') {
+    if (!t.bleId) throw new Error('Bluetooth-адаптер не выбран')
+    return new ELMService(new BleTransport(t.bleId), cfg)
+  }
+  return new ELMService(new CapacitorTcpTransport(cfg), cfg)
 }

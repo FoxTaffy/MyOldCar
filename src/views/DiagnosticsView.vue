@@ -22,10 +22,15 @@ async function scan(): Promise<void> {
   err.value = null
   try {
     const elm = getElm()
-    const codes = await elm.readDtcs()
-    // Стоп-кадр: берём свежий снимок, а не последний из цикла опроса.
-    const frame = await elm.readSnapshot().catch(() => snapshot.value)
-    results.value = codes.map((c) => diagnose(c, frame, settings))
+    const stored = await elm.readDtcs()
+    // Режим 07 поддерживают не все ЭБУ — ошибка тут не должна ронять чтение.
+    const pending = (await elm.readPendingDtcs().catch(() => [])).filter((c) => !stored.includes(c))
+    // Стоп-кадр: берём свежий снимок со всеми PID, а не последний из цикла опроса.
+    const frame = await elm.readSnapshot(true).catch(() => snapshot.value)
+    results.value = [
+      ...stored.map((c) => ({ ...diagnose(c, frame, settings), status: 'confirmed' as const })),
+      ...pending.map((c) => ({ ...diagnose(c, frame, settings), status: 'pending' as const })),
+    ]
     scanned.value = true
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
@@ -45,6 +50,20 @@ async function clear(): Promise<void> {
   }
 }
 
+async function copy(): Promise<void> {
+  const text = results.value
+    .map((r) => `${r.code} (${r.status === 'pending' ? 'временная' : 'подтверждённая'}) — ${r.title}\n` + r.causes.map((c) => `  ${c.probability}% ${c.title}`).join('\n'))
+    .join('\n\n')
+  try {
+    await navigator.clipboard.writeText(text)
+    copied.value = true
+    setTimeout(() => (copied.value = false), 2000)
+  } catch {
+    err.value = 'Не удалось скопировать'
+  }
+}
+const copied = ref(false)
+
 const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-accent')
 </script>
 
@@ -60,6 +79,7 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
 
     <div class="flex gap-3">
       <button class="btn flex-1" :disabled="!isConnected || busy" @click="scan">{{ busy ? 'Чтение…' : 'Считать ошибки' }}</button>
+      <button class="btn-ghost" :disabled="!results.length" @click="copy">{{ copied ? 'Скопировано' : 'Копия' }}</button>
       <button class="btn-ghost" :disabled="!isConnected || busy || !results.length" @click="clear">Сбросить</button>
     </div>
     <p v-if="!isConnected" class="text-center text-sm text-[#5f6978]">Сначала подключись к адаптеру.</p>
@@ -68,7 +88,10 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
 
     <article v-for="r in results" :key="r.code" class="card space-y-3 p-4">
       <header>
-        <div class="font-mono text-2xl font-semibold text-bad">{{ r.code }}</div>
+        <div class="flex items-baseline justify-between">
+          <span class="font-mono text-2xl font-semibold text-bad">{{ r.code }}</span>
+          <span class="label" :class="r.status === 'pending' ? 'text-warn' : 'text-bad'">{{ r.status === 'pending' ? 'Временная' : 'Подтверждённая' }}</span>
+        </div>
         <div class="text-sm text-[#aab3c0]">{{ r.title }}</div>
       </header>
       <ul class="space-y-3">

@@ -7,8 +7,20 @@ export interface SensorSnapshot {
   mafGs: number | null
   /** Напряжение бортсети, В (PID 01 42), если доступно. */
   voltage?: number | null
+  /** Расчётная нагрузка двигателя, % (PID 01 04). */
+  loadPct?: number | null
+  /** Положение дросселя, % (PID 01 11). */
+  throttlePct?: number | null
+  /** Температура воздуха на впуске, °C (PID 01 0F). */
+  intakeTempC?: number | null
+  /** Кратковременная / долговременная коррекция топливоподачи, % (PID 01 06 / 07). */
+  stft?: number | null
+  ltft?: number | null
   timestamp: number
 }
+
+export type ConnectionMode = 'auto' | 'ble' | 'wifi' | 'mock'
+export type ConnectionKind = 'ble' | 'wifi' | 'mock'
 
 export type Level = 'ok' | 'warn' | 'bad'
 
@@ -40,6 +52,8 @@ export interface CauseResult {
 
 export interface DiagnosisResult {
   code: string
+  /** confirmed — сохранённая (режим 03), pending — временная (режим 07). */
+  status?: 'confirmed' | 'pending'
   title: string
   causes: CauseResult[]
   /** Какие правила сработали — для прозрачности «ИИ». */
