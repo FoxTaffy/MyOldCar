@@ -122,7 +122,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 async function tryKind(kind: ConnectionKind): Promise<ELMService> {
   const svc = createElmService({ kind, host: prefs.host, port: prefs.port, bleId: prefs.bleId })
   try {
-    await withTimeout(svc.connect(), 25000, kind === 'ble' ? 'Bluetooth: адаптер не отвечает' : 'Wi-Fi: адаптер не отвечает')
+    await withTimeout(svc.connect(), kind === 'ble' ? 60000 : 25000, kind === 'ble' ? 'Bluetooth: адаптер не отвечает' : 'Wi-Fi: адаптер не отвечает')
     return svc
   } catch (e) {
     await svc.disconnect().catch(() => undefined)

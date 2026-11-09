@@ -1,5 +1,5 @@
 import { TcpSocket } from 'capacitor-tcp-socket'
-import { BleClient, type BleService } from '@capacitor-community/bluetooth-le'
+import { BleClient, type BleService, type ScanResult } from '@capacitor-community/bluetooth-le'
 import type { ConnectionKind, SensorSnapshot } from '@/types'
 
 /* ------------------------------------------------------------------ */
@@ -91,6 +91,9 @@ export class CapacitorTcpTransport implements Transport {
 
 /** Подмножество BleClient, нужное транспорту (для подмены в тестах). */
 export interface BleLike {
+  initialize?(): Promise<void>
+  requestLEScan?(o: Record<string, never>, cb: (r: ScanResult) => void): Promise<void>
+  stopLEScan?(): Promise<void>
   connect(id: string, onDisconnect?: (id: string) => void, o?: { timeout?: number }): Promise<void>
   disconnect(id: string): Promise<void>
   getServices(id: string): Promise<BleService[]>
@@ -139,6 +142,17 @@ export async function pickBleDevice(): Promise<PairedDevice> {
   return { deviceId: d.deviceId, name: d.name ?? 'OBDII' }
 }
 
+/** Расшифровка типичных сбоев Android BLE (status 133 = общий GATT_ERROR). */
+export function friendlyBleError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e)
+  if (/133|GATT/i.test(raw)) {
+    return `${raw}. Обычно адаптер занят другим приложением: закройте Car Scanner и другие OBD-программы (в т.ч. в фоне), включите зажигание и повторите; если не помогло — выньте адаптер на 10 секунд и выключите/включите Bluetooth на телефоне.`
+  }
+  if (/permission|denied/i.test(raw)) return `${raw}. Разрешите приложению доступ к Bluetooth/«Устройствам поблизости» в настройках телефона.`
+  if (/disabled|not enabled|powered off/i.test(raw)) return `${raw}. Включите Bluetooth на телефоне.`
+  return raw
+}
+
 export class BleTransport implements Transport {
   private cb: (chunk: string) => void = () => {}
   private closeCb: () => void = () => {}
@@ -149,11 +163,46 @@ export class BleTransport implements Transport {
   constructor(
     private readonly deviceId: string,
     private readonly ble: BleLike = BleClient as unknown as BleLike,
+    private readonly opts: { attempts?: number; retryMs?: number; scanMs?: number } = {},
   ) {}
+
+  private get attempts(): number { return this.opts.attempts ?? 3 }
+  private get retryMs(): number { return this.opts.retryMs ?? 1200 }
+  private get scanMs(): number { return this.opts.scanMs ?? 4000 }
+
+  /** Короткое сканирование: Android надёжнее подключается к устройству, которое только что «видел». */
+  private async refresh(): Promise<void> {
+    const { ble, deviceId } = this
+    if (!ble.requestLEScan || !ble.stopLEScan) return
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, this.scanMs)
+      ble.requestLEScan!({}, (r) => {
+        if (r.device.deviceId === deviceId) { clearTimeout(timer); resolve() }
+      }).catch(() => { clearTimeout(timer); resolve() })
+    })
+    await ble.stopLEScan().catch(() => undefined)
+  }
 
   async connect(): Promise<void> {
     this.manual = false
-    await this.ble.connect(this.deviceId, () => { if (!this.manual) this.closeCb() }, { timeout: 8000 })
+    // Без initialize() Android не выдаёт разрешения и не поднимает BLE-стек (после перезапуска приложения).
+    await this.ble.initialize?.()
+    let lastErr: unknown
+    for (let attempt = 1; attempt <= this.attempts; attempt++) {
+      try {
+        await this.refresh()
+        await this.ble.connect(this.deviceId, () => { if (!this.manual) this.closeCb() }, { timeout: 8000 })
+        lastErr = undefined
+        break
+      } catch (e) {
+        lastErr = e
+        // Освобождаем зависший GATT-клиент, иначе следующая попытка снова даст 133.
+        await this.ble.disconnect(this.deviceId).catch(() => undefined)
+        if (attempt < this.attempts) await new Promise((r) => setTimeout(r, this.retryMs * attempt))
+      }
+    }
+    if (lastErr !== undefined) throw new Error(friendlyBleError(lastErr))
+
     const chars = pickElmChars(await this.ble.getServices(this.deviceId))
     if (!chars) {
       await this.ble.disconnect(this.deviceId).catch(() => undefined)

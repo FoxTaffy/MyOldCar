@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BleTransport, ELMService, parseDtcResponse, pickElmChars, type BleLike } from '@/services/ELMService'
+import { BleTransport, ELMService, friendlyBleError, parseDtcResponse, pickElmChars, type BleLike } from '@/services/ELMService'
 import { oilStatus, DEFAULT_OIL } from '@/services/OilService'
 import { TripRecorder, tripAvgSpeed, tripConsumption } from '@/services/TripRecorder'
 import type { BleService } from '@capacitor-community/bluetooth-le'
@@ -113,5 +113,48 @@ describe('OilService', () => {
   })
   it('без даты — не настроено', () => {
     expect(oilStatus(DEFAULT_OIL, 1000).configured).toBe(false)
+  })
+})
+
+describe('BLE: status 133', () => {
+  const okSvc = [svc('0000fff0-0000-1000-8000-00805f9b34fb', [['fff1', { notify: true }], ['fff2', { write: true }]])]
+  const base = (): BleLike => ({
+    connect: async () => {}, disconnect: async () => {}, getServices: async () => okSvc,
+    startNotifications: async () => {}, stopNotifications: async () => {}, write: async () => {}, writeWithoutResponse: async () => {},
+  })
+
+  it('initialize вызывается до подключения; 133 повторяется, зависший GATT освобождается', async () => {
+    const log: string[] = []
+    let n = 0
+    const fake: BleLike = {
+      ...base(),
+      initialize: async () => { log.push('init') },
+      connect: async () => { log.push('connect'); if (++n < 3) throw new Error('Connection failed with status 133 (GATT_ERROR).') },
+      disconnect: async () => { log.push('disconnect') },
+    }
+    await new BleTransport('x', fake, { retryMs: 1, scanMs: 1 }).connect()
+    expect(log).toEqual(['init', 'connect', 'disconnect', 'connect', 'disconnect', 'connect'])
+  })
+
+  it('после всех попыток — понятное сообщение про занятый адаптер', async () => {
+    const fake: BleLike = { ...base(), connect: async () => { throw new Error('Connection failed with status 133 (GATT_ERROR).') } }
+    await expect(new BleTransport('x', fake, { retryMs: 1, scanMs: 1 }).connect()).rejects.toThrow(/Car Scanner/)
+  })
+
+  it('свежее сканирование: ждёт появления нужного устройства и останавливает скан', async () => {
+    const log: string[] = []
+    const fake: BleLike = {
+      ...base(),
+      requestLEScan: async (_o, cb) => { log.push('scan'); setTimeout(() => cb({ device: { deviceId: 'x' } } as never), 1) },
+      stopLEScan: async () => { log.push('stop') },
+      connect: async () => { log.push('connect') },
+    }
+    await new BleTransport('x', fake, { scanMs: 500 }).connect()
+    expect(log).toEqual(['scan', 'stop', 'connect'])
+  })
+
+  it('friendlyBleError: разрешения и выключенный Bluetooth', () => {
+    expect(friendlyBleError(new Error('Permission denied'))).toMatch(/Разрешите/)
+    expect(friendlyBleError(new Error('Bluetooth is disabled'))).toMatch(/Включите/)
   })
 })

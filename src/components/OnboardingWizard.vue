@@ -89,7 +89,7 @@ async function finish(): Promise<void> {
             <span class="mr-auto font-mono text-sm">{{ prefs.bleName || 'не выбран' }}</span>
             <button class="btn-ghost !px-3 !py-2 !text-xs" :disabled="bleBusy" @click="findAdapter">{{ bleBusy ? 'Поиск…' : prefs.bleId ? 'Сменить' : 'Найти адаптер' }}</button>
           </div>
-          <p class="mt-1 text-xs text-[#5f6978]">Включите зажигание, вставьте адаптер и нажмите «Найти». Разрешите доступ к Bluetooth. Выберите «OBDII» (или похожее) в списке.</p>
+          <p class="mt-1 text-xs text-[#5f6978]">Включите зажигание, вставьте адаптер и нажмите «Найти». Разрешите доступ к Bluetooth. Выберите «OBDII» (или похожее) в списке. Перед этим закройте Car Scanner и другие OBD-приложения: BLE-адаптер принимает только одно подключение.</p>
           <p v-if="bleError" class="mt-1 font-mono text-xs text-bad">{{ bleError }}</p>
         </div>
 
