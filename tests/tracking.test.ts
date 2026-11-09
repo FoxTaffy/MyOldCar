@@ -54,6 +54,24 @@ describe('TripSession: автозапись и 30-минутный таймау�
     expect(s.trip!.distanceKm).toBe(0)
   })
 
+  it('GPS без скорости: скорость и пробег считаются по смещению координат', () => {
+    const s = new TripSession()
+    let t = 0
+    // ~11 м за секунду по широте ≈ 40 км/ч
+    for (let i = 0; i < 60; i++, t += 1000) s.feedGps(t, { t, lat: 55.75 + i * 0.0001, lon: 37.62, speedKmh: null, accuracy: 4 })
+    expect(s.active).toBe(true)
+    expect(s.trip!.distanceKm).toBeGreaterThan(0.5)
+    expect(s.trip!.maxSpeedKmh).toBeGreaterThan(30)
+    expect(s.trip!.maxSpeedKmh).toBeLessThan(50)
+  })
+
+  it('GPS без скорости на стоянке: дрожание координат в пределах погрешности пробег не накручивает', () => {
+    const s = new TripSession()
+    s.feedObd(0, obd(0, { rpm: 800, speedKmh: null }))
+    for (let t = 1000; t < 60_000; t += 1000) s.feedGps(t, { t, lat: 55.75 + (t % 2000 ? 0.00002 : 0), lon: 37.62, speedKmh: null, accuracy: 8 })
+    expect(s.trip!.distanceKm).toBe(0)
+  })
+
   it('плохая точность GPS отбрасывается', () => {
     const s = new TripSession()
     s.feedGps(0, { ...fix(0, 50), accuracy: 200 })

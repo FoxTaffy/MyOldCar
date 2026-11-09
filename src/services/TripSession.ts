@@ -69,6 +69,14 @@ export class TripSession {
   /** Новая точка GPS. */
   feedGps(now: number, fix: GpsFix): number {
     if (fix.accuracy > GPS_MAX_ACCURACY_M) return 0
+    // Часть телефонов (особенно по сети) отдаёт координаты без скорости — считаем её по смещению между точками.
+    const prev = this.gps
+    if (fix.speedKmh == null && prev && now - prev.at > 0 && now - prev.at <= GPS_FRESH_MS) {
+      const metres = haversineKm(prev.fix, fix) * 1000
+      // Смещение меньше погрешности GPS — это стоянка, а не движение.
+      const noise = Math.max(prev.fix.accuracy, fix.accuracy, 5)
+      fix = { ...fix, speedKmh: metres < noise ? 0 : (metres / ((now - prev.at) / 1000)) * 3.6 }
+    }
     this.gps = { fix, at: now }
     return this.step(now)
   }
