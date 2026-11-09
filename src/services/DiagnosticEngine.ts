@@ -1,4 +1,5 @@
 import matrixJson from '@/data/dtcMatrix.json'
+import { describeDtc } from '@/data/dtcDictionary'
 import type { AppSettings, CauseResult, DiagnosisResult, SensorSnapshot } from '@/types'
 
 /* ---------- Формат JSON-матрицы ---------- */
@@ -123,12 +124,16 @@ export function diagnose(
   const code = normalizeCode(rawCode)
   const entry = matrix[code]
   if (!entry) {
+    // Вероятностной модели нет, но расшифровку (что за система и что означает код) даём всегда.
+    const info = describeDtc(code)
     return {
       code,
-      title: 'Код не найден в локальной базе',
+      title: info.title,
       causes: [{
-        id: 'unknown', title: 'Неизвестный код', probability: 100,
-        recommendation: 'Найди расшифровку кода для М73/Bosch M7.9.7 и добавь правило в src/data/dtcMatrix.json.',
+        id: 'unknown', title: info.known ? 'Расшифровка без оценки причин' : 'Код не найден в справочнике', probability: 100,
+        recommendation: info.known
+          ? `Система: ${info.system}. Для этого кода нет вероятностной модели — проверь цепь указанного узла (разъём, проводка, питание/масса), затем сам узел. После ремонта смотри, возвращается ли код.`
+          : `Система: ${info.system}. ${info.kind === 'manufacturer' ? 'Заводской код — смотри документацию на конкретный блок (Bosch M7.9.7 / Январь).' : 'Универсальный код — уточни расшифровку по SAE J2012.'}`,
       }],
       notes: [],
     }

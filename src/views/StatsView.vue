@@ -6,17 +6,17 @@ import { useVehicle } from '@/composables/useVehicle'
 import { tripAvgSpeed, tripConsumption, type Trip } from '@/services/TripRecorder'
 import { dateTime, dayKey, duration, num } from '@/utils/format'
 
-const { garage, clearTrips } = useGarage()
-const { tripLive, isConnected } = useVehicle()
+const { garage, clearTrips, deleteTrip } = useGarage()
+const { tripLive, tripActive } = useVehicle()
 const period = ref<'7' | '30' | 'all'>('7')
 const periods = [{ k: '7', l: '7 дней' }, { k: '30', l: '30 дней' }, { k: 'all', l: 'Всё' }] as const
 
 const trips = computed<Trip[]>(() => {
   const from = period.value === 'all' ? 0 : Date.now() - Number(period.value) * 86400000
-  const list = garage.trips.filter((t) => t.start >= from)
+  const list = garage.trips.filter((t) => t.start >= from && (!t.carId || t.carId === garage.activeCarId))
   const live = tripLive.value
-  if (isConnected.value && live.distanceKm >= 0.05) {
-    list.push({ id: 'live', start: Date.now() - live.movingMs - live.stoppedMs, end: Date.now(), ...live })
+  if (tripActive.value && live.distanceKm >= 0.05) {
+    list.push({ id: 'live', carId: garage.activeCarId, start: Date.now() - live.movingMs - live.stoppedMs, end: Date.now(), hasTrack: true, ...live })
   }
   return list.sort((a, b) => b.start - a.start)
 })
@@ -36,8 +36,12 @@ const days = computed<DayPoint[]>(() => {
   })
 })
 
+function askDelete(id: string): void {
+  if (confirm('Удалить поездку?')) deleteTrip(id)
+}
+
 function wipe(): void {
-  if (confirm('Удалить всю историю поездок? Счётчик масла не изменится.')) clearTrips()
+  if (confirm('Удалить всю историю поездок этой машины? Счётчик масла не изменится.')) clearTrips(garage.activeCarId)
 }
 </script>
 
@@ -47,7 +51,7 @@ function wipe(): void {
       <button v-for="p in periods" :key="p.k" class="py-2 text-xs font-semibold uppercase tracking-wider" :class="period === p.k ? 'bg-accent text-night-950' : 'text-[#7b8696]'" @click="period = p.k">{{ p.l }}</button>
     </div>
 
-    <div v-if="!trips.length" class="card p-4 text-sm text-[#7b8696]">Поездок пока нет. Запись идёт сама, пока приложение подключено к адаптеру.</div>
+    <div v-if="!trips.length" class="card p-4 text-sm text-[#7b8696]">Поездок пока нет. Запись идёт сама: по GPS и датчикам, в том числе при свёрнутом приложении.</div>
 
     <template v-else>
       <div class="card grid grid-cols-2 gap-px bg-night-600 p-0">
@@ -66,7 +70,7 @@ function wipe(): void {
       <div class="card p-3"><div class="label mb-1">Пробег и расход по дням</div><DailyChart :days="days" /></div>
 
       <article v-for="t in trips" :key="t.id" class="card p-3">
-        <div class="mb-2 flex items-baseline justify-between">
+        <div class="mb-2 flex items-baseline justify-between gap-2">
           <span class="font-mono text-sm">{{ dateTime(t.start) }}</span>
           <span v-if="t.id === 'live'" class="label text-ok">идёт</span>
           <span v-else class="font-mono text-xs text-[#7b8696]">{{ duration(t.end - t.start) }}</span>
@@ -77,6 +81,12 @@ function wipe(): void {
           <div><dt class="label">л/100</dt><dd class="font-mono text-lg">{{ num(tripConsumption(t), 1) }}</dd></div>
           <div><dt class="label">₽</dt><dd class="font-mono text-lg">{{ num(t.fuelL * garage.fuelPrice, 0) }}</dd></div>
         </dl>
+        <div class="mt-2 flex items-center gap-2">
+          <span v-if="t.events?.length" class="flex h-6 w-6 items-center justify-center border border-bad font-mono text-sm font-bold text-bad" title="Загоралась лампа Check Engine">!</span>
+          <RouterLink v-if="t.hasTrack" :to="`/trip/${t.id}`" class="btn-ghost mr-auto !px-3 !py-2 !text-xs">Карта и данные</RouterLink>
+          <span v-else class="mr-auto text-xs text-[#5f6978]">без трека (нет GPS)</span>
+          <button v-if="t.id !== 'live'" class="text-xs text-[#7b8696] underline" @click="askDelete(t.id)">удалить</button>
+        </div>
       </article>
 
       <button class="btn-ghost w-full" @click="wipe">Очистить историю</button>

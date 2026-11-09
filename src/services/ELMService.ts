@@ -338,6 +338,8 @@ export class MockTransport implements Transport {
       case '0106': return `41 06 ${hex(((this.opts.lowMaf ? 6 : 1) + 100) * 1.28, 1)}`
       case '0107': return `41 07 ${hex(((this.opts.lowMaf ? 9 : 2) + 100) * 1.28, 1)}`
       case '0142': return `41 42 ${hex(14200 + Math.sin(Date.now() / 3000) * 150, 2)}`
+      case '0101': return Date.now() - this.t0 > 20000 ? '41 01 81 07 E5 00' : '41 01 00 07 E5 00' // лампа загорается через 20 с демо
+      case '0902': return '014\n0: 49 02 01 58 54 41\n1: 32 31 30 34 30 30 59\n2: 31 32 33 34 35 36 37'
       case '03': return `43 ${this.opts.dtcs.length ? this.opts.dtcs.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
       case '07': return `47 ${this.opts.pending.length ? this.opts.pending.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
       default: return 'NO DATA'
@@ -378,6 +380,28 @@ export function parseDtcResponse(raw: string, header = '43'): string[] {
     }
   }
   return [...new Set(codes)]
+}
+
+/**
+ * Разбор ответа на 09 02: одной строкой «49 02 01 …» или кадрами ISO-TP «0: 49 02 01 …», «1: …».
+ * Возвращает 17-символьный VIN или null.
+ */
+export function parseVinResponse(raw: string): string | null {
+  let bytes = ''
+  for (const line of raw.split(/[\r\n]+/)) {
+    if (/^\s*[0-9A-Fa-f]{3}\s*$/.test(line)) continue // строка «014» — длина ответа ISO-TP
+    const l = line.trim().replace(/^[0-9A-Fa-f]{1,3}:\s*/, '').replace(/[^0-9A-Fa-f]/g, '').toUpperCase()
+    if (!l) continue
+    // Заголовок 4902 + номер 01 — в начале ответа (на К-линии — в начале каждой строки).
+    bytes += l.startsWith('4902') ? l.slice(6) : l
+  }
+  let text = ''
+  for (let i = 0; i + 2 <= bytes.length; i += 2) {
+    const c = parseInt(bytes.slice(i, i + 2), 16)
+    if (c >= 0x30 && c <= 0x5a) text += String.fromCharCode(c)
+  }
+  const m = text.match(/[A-HJ-NPR-Z0-9]{17}/)
+  return m ? m[0] : null
 }
 
 /** Возвращает байты данных после заголовка «41 xx». */
@@ -569,7 +593,10 @@ export class ELMService {
     const intake = await this.pid('0F', true)
     const thr = await this.pid('11', true)
     const volt = await this.pid('42', true)
+    const mil = await this.pid('01', true)
     return {
+      milOn: mil && mil.length >= 1 ? (mil[0] & 0x80) !== 0 : null,
+      dtcCount: mil && mil.length >= 1 ? mil[0] & 0x7f : null,
       loadPct: load ? (load[0] * 100) / 255 : null,
       stft: stft ? (stft[0] * 100) / 128 - 100 : null,
       ltft: ltft ? (ltft[0] * 100) / 128 - 100 : null,
@@ -577,6 +604,13 @@ export class ELMService {
       throttlePct: thr ? (thr[0] * 100) / 255 : null,
       voltage: volt && volt.length >= 2 ? (volt[0] * 256 + volt[1]) / 1000 : null,
     }
+  }
+
+  /** Режим 09 PID 02 — VIN из ЭБУ. null, если ЭБУ не поддерживает (старые К-линейные М73 часто не умеют). */
+  async readVin(): Promise<string | null> {
+    const raw = await this.send('0902', 8000)
+    if (/NO DATA|UNABLE|ERROR|\?/i.test(raw)) return null
+    return parseVinResponse(raw)
   }
 
   /** Режим 03 — сохранённые (подтверждённые) коды неисправностей. */

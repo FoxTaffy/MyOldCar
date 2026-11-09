@@ -8,6 +8,8 @@ export const router = createRouter({
     { path: '/diagnostics', name: 'diagnostics', component: () => import('@/views/DiagnosticsView.vue') },
     { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },
     { path: '/service', name: 'service', component: () => import('@/views/ServiceView.vue') },
+    { path: '/trip/:id', name: 'trip', component: () => import('@/views/TripView.vue') },
+    { path: '/garage', name: 'garage', component: () => import('@/views/GarageView.vue') },
     { path: '/performance', name: 'performance', component: () => import('@/views/PerformanceView.vue') },
   ],
 })

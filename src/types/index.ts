@@ -16,6 +16,10 @@ export interface SensorSnapshot {
   /** Кратковременная / долговременная коррекция топливоподачи, % (PID 01 06 / 07). */
   stft?: number | null
   ltft?: number | null
+  /** Лампа Check Engine горит (PID 01 01, бит 7). */
+  milOn?: boolean | null
+  /** Число сохранённых ошибок по данным ЭБУ (PID 01 01). */
+  dtcCount?: number | null
   timestamp: number
 }
 

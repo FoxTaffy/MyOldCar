@@ -4,12 +4,12 @@ import OilGauge from '@/components/OilGauge.vue'
 import { useGarage } from '@/composables/useGarage'
 import { num, todayISO } from '@/utils/format'
 
-const { garage, oil, setOil } = useGarage()
+const { garage, car, oil, setOil } = useGarage()
 
 const form = reactive({
-  date: garage.oil.dateISO ?? todayISO(),
+  date: car().oil.dateISO ?? todayISO(),
   since: 0,
-  interval: garage.oil.intervalKm,
+  interval: car().oil.intervalKm,
 })
 
 function save(): void {
@@ -25,7 +25,7 @@ function justChanged(): void {
 
 <template>
   <section class="space-y-2">
-    <div class="card p-4"><OilGauge :status="oil()" :interval-km="garage.oil.intervalKm" :changed-at="garage.oil.dateISO" /></div>
+    <div class="card p-4"><OilGauge :status="oil()" :interval-km="car().oil.intervalKm" :changed-at="car().oil.dateISO" /></div>
 
     <div class="card space-y-3 p-4">
       <h2 class="label">Замена масла</h2>
@@ -53,7 +53,7 @@ function justChanged(): void {
     </div>
 
     <div class="card p-4 text-sm text-[#7b8696]">
-      Всего намерено приложением: <span class="font-mono text-[#d5dae2]">{{ num(garage.trackedTotalKm, 1) }} км</span>
+      Намерено приложением на этой машине: <span class="font-mono text-[#d5dae2]">{{ num(car().trackedTotalKm, 1) }} км</span>
     </div>
   </section>
 </template>

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useVehicle } from '@/composables/useVehicle'
+import { describeDtc, searchDtcs } from '@/data/dtcDictionary'
 import { diagnose } from '@/services/DiagnosticEngine'
 import type { DiagnosisResult } from '@/types'
 
-const { settings, snapshot, isConnected, getElm } = useVehicle()
+const { settings, snapshot, isConnected, getElm, milOn } = useVehicle()
 const results = ref<DiagnosisResult[]>([])
 const scanned = ref(false)
 const busy = ref(false)
@@ -52,6 +53,8 @@ async function copy(): Promise<void> {
   }
 }
 const copied = ref(false)
+const query = ref('')
+const found = computed(() => searchDtcs(query.value))
 
 const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-accent')
 </script>
@@ -70,6 +73,10 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
       <button class="btn flex-1" :disabled="!isConnected || busy" @click="scan">{{ busy ? 'Чтение…' : 'Считать ошибки' }}</button>
       <button class="btn-ghost" :disabled="!results.length" @click="copy">{{ copied ? 'Скопировано' : 'Копия' }}</button>
     </div>
+    <div v-if="milOn" class="flex items-center gap-3 border border-bad p-3 text-bad">
+      <span class="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-bad font-mono text-lg font-bold">!</span>
+      <span class="text-sm">Лампа Check Engine сейчас горит</span>
+    </div>
     <p v-if="!isConnected" class="text-center text-sm text-[#5f6978]">Сначала подключись к адаптеру.</p>
     <p v-if="err" class="text-sm text-bad">{{ err }}</p>
     <p v-if="scanned && !results.length" class="card p-4 text-center text-ok">Ошибок не найдено</p>
@@ -81,6 +88,7 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
           <span class="label" :class="r.status === 'pending' ? 'text-warn' : 'text-bad'">{{ r.status === 'pending' ? 'Временная' : 'Подтверждённая' }}</span>
         </div>
         <div class="text-sm text-[#aab3c0]">{{ r.title }}</div>
+        <div class="mt-1 text-xs text-[#5f6978]">{{ describeDtc(r.code).system }}<template v-if="describeDtc(r.code).subsystem"> · {{ describeDtc(r.code).subsystem }}</template> · {{ describeDtc(r.code).kind === 'generic' ? 'универсальный код' : 'заводской код' }}</div>
       </header>
       <ul class="space-y-3">
         <li v-for="c in r.causes" :key="c.id">
@@ -99,5 +107,20 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
         <ul class="mt-1 list-disc pl-5"><li v-for="n in r.notes" :key="n">{{ n }}</li></ul>
       </details>
     </article>
+
+    <div class="card space-y-2 p-4">
+      <h2 class="label">Справочник кодов</h2>
+      <input v-model="query" class="field" placeholder="Код (P0171) или слово (лямбда, форсунка…)" autocapitalize="characters" spellcheck="false" />
+      <ul v-if="found.length" class="divide-y divide-night-600 text-sm">
+        <li v-for="d in found" :key="d.code" class="flex gap-3 py-2">
+          <span class="w-14 shrink-0 font-mono font-semibold text-accent-glow">{{ d.code }}</span>
+          <span>{{ d.title }}</span>
+        </li>
+      </ul>
+      <template v-else-if="query.trim()">
+        <p class="text-sm text-[#7b8696]">В справочнике нет такого кода. Общая расшифровка:</p>
+        <p v-if="/^[PBCU][0-9A-F]{4}$/i.test(query.trim())" class="text-sm">{{ describeDtc(query).title }}</p>
+      </template>
+    </div>
   </section>
 </template>

@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import OnboardingWizard from '@/components/OnboardingWizard.vue'
+import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
+import { carShort } from '@/services/Cars'
 
 const v = useVehicle()
+const { car } = useGarage()
 const showSetup = ref(!v.prefs.onboarded)
 const tabs = [
   { to: '/', label: 'Панель' },
@@ -22,12 +25,14 @@ const statusText = computed(() =>
 <template>
   <div class="mx-auto flex h-full max-w-3xl flex-col">
     <header class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-night-600 px-4 py-2">
-      <div class="mr-auto">
-        <div class="text-sm font-semibold uppercase tracking-[0.12em]">ВАЗ-2104 <span class="text-[#7b8696]">/ М73</span></div>
+      <RouterLink to="/garage" class="mr-auto block" title="Профили автомобилей">
+        <div class="text-sm font-semibold uppercase tracking-[0.12em]">{{ carShort(car()) }} <span class="text-[#7b8696]">▾</span></div>
         <div class="flex items-center gap-2 font-mono text-[11px] text-[#7b8696]">
           <span class="inline-block h-2 w-2" :class="v.isConnected.value ? 'bg-ok' : 'bg-[#4a5260]'" />{{ statusText }}
+          <span v-if="v.tripActive.value" class="text-ok">· ЗАПИСЬ ПОЕЗДКИ</span>
         </div>
-      </div>
+      </RouterLink>
+      <span v-if="v.milOn.value" class="flex h-8 w-8 items-center justify-center border-2 border-bad font-mono text-lg font-bold text-bad" title="Горит Check Engine" @click="$router.push('/diagnostics')">!</span>
       <button v-if="!v.isConnected.value" class="btn !px-3 !py-2 !text-xs" :disabled="v.status.value === 'connecting'" @click="v.connect()">{{ v.status.value === 'connecting' ? 'Ждите…' : 'Подключить' }}</button>
       <button v-else class="btn-ghost !px-3 !py-2 !text-xs" @click="v.disconnect()">Отключить</button>
       <button class="btn-ghost !px-3 !py-2 !text-xs" @click="showSetup = true">Настр.</button>

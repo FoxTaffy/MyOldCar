@@ -8,8 +8,8 @@ import { Ema, fuelLitersPer100Km, fuelLitersPerHour } from '@/services/FuelCalcu
 import { duration, num } from '@/utils/format'
 import type { Level } from '@/types'
 
-const { snapshot, pollMode, isConnected, tripLive } = useVehicle()
-const { garage, oil } = useGarage()
+const { snapshot, pollMode, isConnected, tripLive, milOn, gpsState, gpsFix, tripActive, endTrip } = useVehicle()
+const { garage, car, oil } = useGarage()
 pollMode.value = 'normal'
 
 const fmt = (n: number | null | undefined, digits = 0): string => (n == null || Number.isNaN(n) ? '—' : n.toFixed(digits))
@@ -71,6 +71,10 @@ const trip = computed(() => {
 </script>
 
 <template>
+  <div v-if="milOn" class="mb-2 flex items-center gap-3 border border-bad p-3 text-bad">
+    <span class="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-bad font-mono text-xl font-bold">!</span>
+    <span class="text-sm"><b>Горит Check Engine.</b> Откройте «Ошибки» и считайте коды. Место, где лампа загорелась, будет отмечено «!» на карте поездки.</span>
+  </div>
   <p v-if="!isConnected" class="mb-2 border border-night-600 p-3 text-sm text-[#7b8696]">Нет связи с адаптером. Нажмите «Подключить»; в демо-режиме данные симулируются.</p>
   <div class="grid grid-cols-2 gap-2">
     <GaugeTile label="Скорость" :value="fmt(snapshot?.speedKmh)" unit="км/ч" :level="speedLevel(snapshot?.speedKmh ?? null)" />
@@ -90,7 +94,10 @@ const trip = computed(() => {
   </div>
 
   <div class="card mt-2 p-3">
-    <div class="label mb-2">Текущая поездка</div>
+    <div class="mb-2 flex items-center justify-between">
+      <span class="label">Текущая поездка <span v-if="tripActive" class="text-ok">· идёт запись</span></span>
+      <span class="font-mono text-[11px] text-[#7b8696]">GPS: {{ gpsState === 'on' ? (gpsFix ? `±${Math.round(gpsFix.accuracy)} м` : 'ищу спутники…') : gpsState === 'denied' ? 'нет доступа' : gpsState === 'off' ? 'выкл' : gpsState === 'starting' ? 'запуск…' : 'ошибка' }}</span>
+    </div>
     <dl class="grid grid-cols-4 gap-2 text-center">
       <div><dt class="label">км</dt><dd class="font-mono text-lg">{{ num(trip.km, 1) }}</dd></div>
       <div><dt class="label">км/ч ср.</dt><dd class="font-mono text-lg">{{ num(trip.avg, 0) }}</dd></div>
@@ -99,7 +106,12 @@ const trip = computed(() => {
     </dl>
   </div>
 
+  <div v-if="tripActive" class="mt-2 grid grid-cols-2 gap-2">
+    <RouterLink to="/trip/live" class="btn-ghost text-center">Карта поездки</RouterLink>
+    <button class="btn-ghost" @click="endTrip()">Завершить поездку</button>
+  </div>
+
   <RouterLink to="/service" class="card mt-2 block p-3">
-    <OilGauge :status="oil()" :interval-km="garage.oil.intervalKm" :changed-at="garage.oil.dateISO" />
+    <OilGauge :status="oil()" :interval-km="car().oil.intervalKm" :changed-at="car().oil.dateISO" />
   </RouterLink>
 </template>
