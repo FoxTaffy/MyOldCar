@@ -160,6 +160,8 @@ gps.onFix = (fix) => {
   refreshTripLive()
 }
 gps.onState = (st, msg) => { gpsState.value = st; gpsError.value = msg ?? null }
+/** Попросить права и включить фоновый GPS (кнопка на экране или после мастера). */
+function openGpsSettings(): Promise<void> { return gps.openSettings() }
 
 /** Демо: имитация GPS по скорости симулятора (круговой маршрут вокруг Москвы). */
 const mock = { lat: 55.7539, lon: 37.6208, bearing: 40, at: 0 }
@@ -303,6 +305,7 @@ export function useVehicle() {
     connect: () => connect(false),
     disconnect, autoStart, startGps, endTrip,
     stopGps: () => gps.stop(),
+    openGpsSettings,
     getElm: (): ELMService => {
       if (!elm) throw new Error('Нет подключения к адаптеру')
       return elm

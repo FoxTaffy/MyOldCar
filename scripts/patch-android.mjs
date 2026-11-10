@@ -9,6 +9,8 @@ let xml = readFileSync(path, 'utf8')
 const perms = [
   'ACCESS_FINE_LOCATION',
   'ACCESS_COARSE_LOCATION',
+  // Геопозиция «всегда»: без неё Android 10+ не даёт писать поездку при выключенном экране.
+  'ACCESS_BACKGROUND_LOCATION',
   'FOREGROUND_SERVICE',
   'FOREGROUND_SERVICE_LOCATION',
   'POST_NOTIFICATIONS',

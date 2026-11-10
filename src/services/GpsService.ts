@@ -9,6 +9,26 @@ import type { GpsFix } from './TripSession'
  */
 export type GpsState = 'off' | 'starting' | 'on' | 'denied' | 'error'
 
+/**
+ * Права для записи в фоне: точная геопозиция, уведомления службы и геопозиция «всегда».
+ * Android выдаёт «всегда» только отдельным запросом после обычной геопозиции, поэтому просим по шагам.
+ * Возвращает текст проблемы или null, если всё выдано.
+ */
+export async function ensureBackgroundPermissions(): Promise<string | null> {
+  let p = await BackgroundGeolocation.checkPermissions()
+  if (p.location !== 'granted') {
+    p = await BackgroundGeolocation.requestPermissions({ permissions: ['location', 'notification'] })
+  }
+  if (p.location !== 'granted') return 'Нет доступа к геопозиции. Разрешите её в настройках телефона.'
+  if (p.backgroundLocation !== 'granted') {
+    p = await BackgroundGeolocation.requestPermissions({ permissions: ['backgroundLocation'] })
+  }
+  if (p.backgroundLocation !== 'granted') {
+    return 'Выберите геопозицию «Всегда» в настройках приложения, иначе запись остановится при выключенном экране.'
+  }
+  return null
+}
+
 export class GpsService {
   state: GpsState = 'off'
   lastFix: GpsFix | null = null
@@ -32,6 +52,11 @@ export class GpsService {
     this.set('starting')
     try {
       if (Capacitor.isNativePlatform()) {
+        const problem = await ensureBackgroundPermissions()
+        if (problem) {
+          this.set('denied', problem)
+          return
+        }
         // Журнал прошлого запуска уже не относится к текущей поездке.
         await BackgroundGeolocation.clearLocationLog().catch(() => undefined)
         this.logCursor = 0
@@ -39,7 +64,8 @@ export class GpsService {
           {
             backgroundTitle: 'MyOldCar: идёт запись поездки',
             backgroundMessage: 'Пишу маршрут и показания датчиков',
-            requestPermissions: true,
+            // Права запрашиваем сами (ensureBackgroundPermissions), здесь диалог не нужен.
+            requestPermissions: false,
             stale: false,
             distanceFilter: 0,
             networkFallback: true,
@@ -68,6 +94,11 @@ export class GpsService {
     } catch (e) {
       this.set('error', e instanceof Error ? e.message : String(e))
     }
+  }
+
+  /** Открыть системные настройки приложения, если права выданы не полностью. */
+  openSettings(): Promise<void> {
+    return Capacitor.isNativePlatform() ? BackgroundGeolocation.openSettings().catch(() => undefined) : Promise.resolve()
   }
 
   async stop(): Promise<void> {
