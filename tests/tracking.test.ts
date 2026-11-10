@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allDtcs, describeDtc, searchDtcs } from '@/data/dtcDictionary'
+import { BUILTIN_SENSORS } from '@/data/sensors'
 import { parseVinResponse } from '@/services/ELMService'
 import { analyzeTrack, nearestPoint } from '@/services/TripAnalysis'
 import { IDLE_END_MS, TripSession, type GpsFix } from '@/services/TripSession'
@@ -224,5 +225,17 @@ describe('Справочник DTC', () => {
     expect(searchDtcs('лямбда').length).toBeGreaterThan(10)
     expect(searchDtcs('P0420')[0].code).toBe('P0420')
     expect(searchDtcs('')).toEqual([])
+  })
+})
+
+describe('TripSession: статистика датчиков попадает в поездку', () => {
+  it('значения датчиков передаются в поездку и сохраняются при завершении', () => {
+    const s = new TripSession('c1', () => BUILTIN_SENSORS)
+    let t = 0
+    for (let i = 0; i < 30; i++, t += 1000) s.feedObd(t, obd(t, { speedKmh: 50 }), { speed: 50, rpm: 2100 })
+    expect(s.snapshot()!.sensors).toBeDefined()
+    const done = s.finish(t)!
+    expect(Object.keys(done.trip.sensors ?? {})).toEqual(expect.arrayContaining(['speed', 'rpm']))
+    expect(done.trip.series).toBeDefined()
   })
 })

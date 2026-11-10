@@ -6,6 +6,7 @@ import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { Ema, fuelLitersPer100Km, fuelLitersPerHour } from '@/services/FuelCalculator'
 import { duration, num } from '@/utils/format'
+import { BUILTIN_SENSORS, levelOf } from '@/data/sensors'
 import type { Level } from '@/types'
 
 const { snapshot, pollMode, isConnected, tripLive, milOn, gpsState, gpsFix, gpsError, tripActive, endTrip, startGps, openGpsSettings } = useVehicle()
@@ -14,10 +15,12 @@ pollMode.value = 'normal'
 
 const fmt = (n: number | null | undefined, digits = 0): string => (n == null || Number.isNaN(n) ? '—' : n.toFixed(digits))
 
-const speedLevel = (v: number | null): Level => (v == null || v < 90 ? 'ok' : v < 110 ? 'warn' : 'bad')
-const rpmLevel = (v: number | null): Level => (v == null || v < 4000 ? 'ok' : v < 5500 ? 'warn' : 'bad')
-// Холодный двигатель — жёлтый, нормальный — зелёный, перегрев — красный.
-const tempLevel = (v: number | null): Level => (v == null ? 'ok' : v < 70 ? 'warn' : v <= 100 ? 'ok' : v <= 108 ? 'warn' : 'bad')
+const defOf = (id: string) => BUILTIN_SENSORS.find((d) => d.id === id)!
+// Зоны (зелёный / оранжевый / красный) берутся из общего каталога датчиков.
+const lv = (id: string, v: number | null | undefined): Level => levelOf(defOf(id), v)
+const speedLevel = (v: number | null) => lv('speed', v)
+const rpmLevel = (v: number | null) => lv('rpm', v)
+const tempLevel = (v: number | null) => lv('coolant', v)
 const fuelLevel = (v: number | null): Level => (v == null || v < 9 ? 'ok' : v < 13 ? 'warn' : 'bad')
 
 const emaHour = new Ema(0.25)
@@ -40,9 +43,8 @@ const fuel = computed(() => {
     : { value: fmt(lhValue, 1), unit: 'л/ч (стоим)', level: 'ok' as Level }
 })
 
-/** Допустимые значения: коррекции топливоподачи в пределах ±10% — норма, до ±20% — внимание. */
-const trimLevel = (v: number | null | undefined): Level => (v == null || Math.abs(v) <= 10 ? 'ok' : Math.abs(v) <= 20 ? 'warn' : 'bad')
-const voltLevel = (v: number | null | undefined): Level => (v == null || (v >= 13.2 && v <= 14.8) ? 'ok' : v >= 12.4 ? 'warn' : 'bad')
+const trimLevel = (v: number | null | undefined) => lv('stft', v)
+const voltLevel = (v: number | null | undefined) => lv('voltage', v)
 const color = (l: Level) => ({ ok: 'text-[#d5dae2]', warn: 'text-warn', bad: 'text-bad' }[l])
 
 const rows = computed(() => {

@@ -1,4 +1,6 @@
+import type { SensorDef } from '@/data/sensors'
 import { fuelLitersPerHour } from './FuelCalculator'
+import { SensorStatsRecorder, type SensorAgg, type TripSeries } from './SensorStats'
 
 /** Событие в пути: загорелась лампа Check Engine. */
 export interface TripEvent {
@@ -26,6 +28,10 @@ export interface Trip {
   events?: TripEvent[]
   /** Есть ли сохранённый трек (точки с координатами и показаниями). */
   hasTrack?: boolean
+  /** Статистика датчиков за поездку (у старых записей нет). */
+  sensors?: Record<string, SensorAgg>
+  /** Ряды для графика поездки. */
+  series?: TripSeries
 }
 
 export const tripAvgSpeed = (t: Trip): number => (t.movingMs > 0 ? t.distanceKm / (t.movingMs / 3_600_000) : 0)
@@ -36,26 +42,41 @@ const MAX_GAP_MS = 5000
 /** Пропуск до 10 минут можно закрыть смещением по GPS (редкие точки в фоне, тоннель). */
 export const MAX_GPS_GAP_MS = 10 * 60_000
 
-/** Интегрирует скорость и расход ДМРВ в поездку. Не зависит от железа — легко тестируется. */
+/** Интегрирует скорость и расход ДМРВ в поездку, а также статистику датчиков. Не зависит от железа — легко тестируется. */
 export class TripRecorder {
   current: Trip | null = null
+  readonly stats: SensorStatsRecorder
   private last: { t: number; speed: number } | null = null
 
+  constructor(defs: () => SensorDef[] = () => []) {
+    this.stats = new SensorStatsRecorder(defs)
+  }
+
+  /** Копия текущей поездки вместе со статистикой датчиков (для сохранения и показа). */
+  snapshot(): Trip | null {
+    const t = this.current
+    return t ? { ...t, ...this.stats.snapshot() } : null
+  }
+
   begin(now: number, carId?: string): void {
+    this.stats.reset()
     this.current = { id: String(now), carId, start: now, end: now, distanceKm: 0, fuelL: 0, movingMs: 0, stoppedMs: 0, maxSpeedKmh: 0 }
     this.last = null
   }
 
   /**
    * Возвращает приращение пробега, км. mafGs=null — расход за этот интервал не считаем (нет данных ДМРВ).
-   * gapKm — смещение по GPS с прошлой точки: им закрываем пропуск, слишком длинный для интегрирования скорости.
+   * values — показания всех датчиков на этот момент (для статистики). gapKm — смещение по GPS с прошлой точки:
+   * им закрываем пропуск, слишком длинный для интегрирования скорости.
    */
-  feed(t: number, speedKmh: number | null, mafGs: number | null, gapKm?: number | null): number {
+  feed(t: number, speedKmh: number | null, mafGs: number | null, values?: Record<string, number | null | undefined>, gapKm?: number | null): number {
     const trip = this.current
-    if (!trip || speedKmh == null) return 0
-    const prev = this.last
+    if (!trip) return 0
     // Опоздавшие данные (старее уже учтённых) не должны сбивать счёт времени.
-    if (prev && t <= prev.t) return 0
+    if (this.last && t <= this.last.t) return 0
+    if (values) this.stats.feed(t, values)
+    if (speedKmh == null) return 0
+    const prev = this.last
     this.last = { t, speed: speedKmh }
     trip.maxSpeedKmh = Math.max(trip.maxSpeedKmh, speedKmh)
     trip.end = t
@@ -88,6 +109,7 @@ export class TripRecorder {
     this.last = null
     if (!trip) return null
     trip.end = now
+    Object.assign(trip, this.stats.snapshot())
     return trip.distanceKm >= 0.1 ? trip : null
   }
 }

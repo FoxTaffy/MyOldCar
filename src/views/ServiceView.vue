@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
 import OilGauge from '@/components/OilGauge.vue'
+import { useUpdate } from '@/composables/useUpdate'
 import { useGarage } from '@/composables/useGarage'
 import { num, todayISO } from '@/utils/format'
 
 const { garage, car, oil, setOil } = useGarage()
+const up = useUpdate()
 
 const form = reactive({
   date: car().oil.dateISO ?? todayISO(),
@@ -50,6 +52,20 @@ function justChanged(): void {
       <label class="block text-xs text-[#7b8696]">Цена бензина, ₽/л (для расчёта стоимости поездок)
         <input v-model.number="garage.fuelPrice" type="number" min="0" step="0.5" inputmode="decimal" class="field mt-1" />
       </label>
+    </div>
+
+    <div class="card space-y-3 p-4">
+      <h2 class="label">Версия и обновление</h2>
+      <p class="text-sm">Установлена: <span class="font-mono">{{ up.version }}</span></p>
+      <template v-if="up.update.value">
+        <p class="text-sm text-ok">Доступна версия <span class="font-mono">{{ up.update.value.version }}</span></p>
+        <p v-if="up.update.value.notes" class="whitespace-pre-line text-xs text-[#7b8696]">{{ up.update.value.notes }}</p>
+        <button class="btn w-full" @click="up.install()">Скачать и обновить (APK)</button>
+        <p class="text-xs text-[#7b8696]">Файл скачается как .apk; откройте его — Android предложит «Обновить» поверх текущей версии, данные сохранятся.</p>
+      </template>
+      <p v-else-if="up.upToDate.value" class="text-sm text-ok">Установлена последняя версия.</p>
+      <p v-if="up.error.value" class="text-xs text-bad">Не удалось проверить: {{ up.error.value }}</p>
+      <button class="btn-ghost w-full !py-2 !text-xs" :disabled="up.checking.value" @click="up.check()">{{ up.checking.value ? 'Проверка…' : 'Проверить обновления' }}</button>
     </div>
 
     <div class="card p-4 text-sm text-[#7b8696]">

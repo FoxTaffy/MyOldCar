@@ -1,6 +1,7 @@
 import type { SensorSnapshot } from '@/types'
 import { fuelLitersPer100Km } from './FuelCalculator'
 import { haversineKm, type TrackPoint } from './TripAnalysis'
+import type { SensorDef } from '@/data/sensors'
 import { MAX_GPS_GAP_MS, TripRecorder, type Trip, type TripEvent } from './TripRecorder'
 
 /** Если ни один датчик (OBD и GPS) 30 минут не показывает движения/работы двигателя — поездка завершается и сохраняется. */
@@ -37,7 +38,9 @@ export interface FinishedTrip {
  * пишет трек. Время передаётся снаружи — легко тестируется.
  */
 export class TripSession {
-  private rec = new TripRecorder()
+  private rec: TripRecorder
+  /** Последние показания всех датчиков (каталог + PID) — для статистики поездки. */
+  private values: Record<string, number | null | undefined> | undefined
   points: TrackPoint[] = []
   private obd: { snap: SensorSnapshot; at: number } | null = null
   private gps: { fix: GpsFix; at: number } | null = null
@@ -52,10 +55,16 @@ export class TripSession {
   /** Кто-то должен считать коды при загорании лампы. */
   onMil?: (ev: TripEvent) => void
 
-  constructor(private carId?: string) {}
+  constructor(private carId?: string, defs: () => SensorDef[] = () => []) {
+    this.rec = new TripRecorder(defs)
+  }
 
   get trip(): Trip | null {
     return this.rec.current
+  }
+  /** Текущая поездка со статистикой датчиков (для показа и сохранения). */
+  snapshot(): Trip | null {
+    return this.rec.snapshot()
   }
   get active(): boolean {
     return this.rec.current != null
@@ -65,8 +74,9 @@ export class TripSession {
   }
 
   /** Новые показания OBD. */
-  feedObd(now: number, snap: SensorSnapshot): number {
+  feedObd(now: number, snap: SensorSnapshot, values?: Record<string, number | null | undefined>): number {
     this.obd = { snap, at: now }
+    if (values) this.values = values
     return this.step(now)
   }
 
@@ -119,7 +129,7 @@ export class TripSession {
     if (gps) this.sources.add('gps')
 
     const maf = obd?.mafGs ?? null
-    const km = this.rec.feed(now, speed, maf, gapKm)
+    const km = this.rec.feed(now, speed, maf, this.values, gapKm)
     this.recordPoint(now, obd, gps, speed)
     return km
   }
@@ -196,6 +206,7 @@ export class TripSession {
     this.obd = null
     this.gps = null
     this.lastAt = 0
+    this.values = undefined
     this.prevMil = false
     if (!trip) return null
     trip.hasTrack = points.length >= 2
