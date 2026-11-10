@@ -8,7 +8,7 @@ import { Ema, fuelLitersPer100Km, fuelLitersPerHour } from '@/services/FuelCalcu
 import { duration, num } from '@/utils/format'
 import type { Level } from '@/types'
 
-const { snapshot, pollMode, isConnected, tripLive, milOn, gpsState, gpsFix, tripActive, endTrip } = useVehicle()
+const { snapshot, pollMode, isConnected, tripLive, milOn, gpsState, gpsFix, gpsError, tripActive, endTrip, startGps, openGpsSettings } = useVehicle()
 const { garage, car, oil } = useGarage()
 pollMode.value = 'normal'
 
@@ -97,6 +97,13 @@ const trip = computed(() => {
     <div class="mb-2 flex items-center justify-between">
       <span class="label">Текущая поездка <span v-if="tripActive" class="text-ok">· идёт запись</span></span>
       <span class="font-mono text-[11px] text-[#7b8696]">GPS: {{ gpsState === 'on' ? (gpsFix ? `±${Math.round(gpsFix.accuracy)} м` : 'ищу спутники…') : gpsState === 'denied' ? 'нет доступа' : gpsState === 'off' ? 'выкл' : gpsState === 'starting' ? 'запуск…' : 'ошибка' }}</span>
+    </div>
+    <div v-if="gpsState === 'denied' || gpsState === 'error'" class="mb-2 border border-warn p-2 text-xs">
+      <p class="font-mono text-warn">{{ gpsError ?? 'GPS недоступен' }}</p>
+      <div class="mt-2 flex gap-2">
+        <button class="btn-ghost !px-3 !py-2 !text-xs" @click="openGpsSettings()">Открыть настройки</button>
+        <button class="btn-ghost !px-3 !py-2 !text-xs" @click="startGps()">Запросить снова</button>
+      </div>
     </div>
     <dl class="grid grid-cols-4 gap-2 text-center">
       <div><dt class="label">км</dt><dd class="font-mono text-lg">{{ num(trip.km, 1) }}</dd></div>

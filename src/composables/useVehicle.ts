@@ -136,8 +136,10 @@ function endTrip(): void {
   refreshTripLive()
 }
 
-/** Раз в 30 с проверяем: если все датчики молчат 30 минут — поездка сохраняется. */
-function idleCheck(): void {
+/** Раз в 30 с: дочитываем пропущенные точки GPS и проверяем — если все датчики молчат 30 минут, поездка сохраняется. */
+async function idleCheck(): Promise<void> {
+  // Сначала дочитываем точки, которые служба GPS записала, пока приложение спало, — иначе поездку закроет таймер простоя.
+  await gps.syncLog()
   const done = session.tick(Date.now())
   if (done) {
     garage.finishTrip(done)
@@ -158,6 +160,8 @@ gps.onFix = (fix) => {
   refreshTripLive()
 }
 gps.onState = (st, msg) => { gpsState.value = st; gpsError.value = msg ?? null }
+/** Попросить права и включить фоновый GPS (кнопка на экране или после мастера). */
+function openGpsSettings(): Promise<void> { return gps.openSettings() }
 
 /** Демо: имитация GPS по скорости симулятора (круговой маршрут вокруг Москвы). */
 const mock = { lat: 55.7539, lon: 37.6208, bearing: 40, at: 0 }
@@ -279,12 +283,13 @@ async function disconnect(): Promise<void> {
 
 /** Вызывать один раз при старте приложения. */
 function autoStart(): void {
-  if (!idleTimer) idleTimer = setInterval(idleCheck, IDLE_CHECK_MS)
+  if (!idleTimer) idleTimer = setInterval(() => { void idleCheck() }, IDLE_CHECK_MS)
   startGps()
   if (prefs.onboarded && prefs.autoConnect && prefs.mode !== 'mock') void connect(true)
   if (typeof document !== 'undefined') {
     // Вернулись в приложение — пробуем сразу, не ждём таймер.
     document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) void idleCheck()
       if (!document.hidden && status.value === 'disconnected' && !manualStop && prefs.autoConnect && prefs.onboarded && prefs.mode !== 'mock') {
         void connect(true)
       }
@@ -300,6 +305,7 @@ export function useVehicle() {
     connect: () => connect(false),
     disconnect, autoStart, startGps, endTrip,
     stopGps: () => gps.stop(),
+    openGpsSettings,
     getElm: (): ELMService => {
       if (!elm) throw new Error('Нет подключения к адаптеру')
       return elm
