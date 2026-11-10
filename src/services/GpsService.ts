@@ -15,6 +15,12 @@ export class GpsService {
   onFix?: (fix: GpsFix) => void
   onState?: (s: GpsState, msg?: string) => void
   private webWatch: number | null = null
+  /** Разница «часы телефона − время точки» (минимальная из виденных): переводит время GPS в часы телефона. */
+  private clockOffset: number | null = null
+  /** Время (по GPS) последней принятой точки — чтобы не учитывать одну точку дважды. */
+  private lastRawTime = 0
+  private logCursor = 0
+  private syncing: Promise<void> | null = null
 
   private set(s: GpsState, msg?: string): void {
     this.state = s
@@ -26,6 +32,9 @@ export class GpsService {
     this.set('starting')
     try {
       if (Capacitor.isNativePlatform()) {
+        // Журнал прошлого запуска уже не относится к текущей поездке.
+        await BackgroundGeolocation.clearLocationLog().catch(() => undefined)
+        this.logCursor = 0
         await BackgroundGeolocation.start(
           {
             backgroundTitle: 'MyOldCar: идёт запись поездки',
@@ -34,6 +43,8 @@ export class GpsService {
             stale: false,
             distanceFilter: 0,
             networkFallback: true,
+            // Служба сама пишет каждую точку в файл: если Android усыпил WebView, точки не теряются (см. syncLog).
+            locationLog: true,
           },
           (pos, err) => {
             if (err) {
@@ -63,20 +74,51 @@ export class GpsService {
     if (Capacitor.isNativePlatform()) await BackgroundGeolocation.stop().catch(() => undefined)
     if (this.webWatch != null) navigator.geolocation.clearWatch(this.webWatch)
     this.webWatch = null
+    this.clockOffset = null
     this.set('off')
   }
 
-  /** Подать точку вручную (демо-режим, тесты). */
+  /**
+   * Дочитывает из журнала службы точки, которые не дошли до приложения (экран выключен, WebView заморожен),
+   * и подаёт их в поездку с их настоящим временем. Вызывать периодически и при возврате в приложение.
+   */
+  syncLog(): Promise<void> {
+    if (!Capacitor.isNativePlatform() || this.state !== 'on') return Promise.resolve()
+    this.syncing ??= this.readLog().catch(() => undefined).finally(() => { this.syncing = null })
+    return this.syncing
+  }
+
+  private async readLog(): Promise<void> {
+    for (;;) {
+      const { entries } = await BackgroundGeolocation.getLocationLog({ afterId: this.logCursor, limit: 1000 })
+      if (!entries.length) return
+      for (const e of entries) this.push(e.latitude, e.longitude, e.speed, e.accuracy, e.bearing, e.time)
+      this.logCursor = entries[entries.length - 1].id
+      await BackgroundGeolocation.clearLocationLog({ upToId: this.logCursor })
+      if (entries.length < 1000) return
+    }
+  }
+
+  /** Подать точку вручную (демо-режим, тесты). time — время точки по GPS, мс. */
   push(lat: number, lon: number, speedMs: number | null, accuracy: number, bearing?: number | null, time?: number | null): void {
+    const now = Date.now()
+    let t = now
+    if (time != null && time > 0) {
+      // Одна и та же точка приходит и напрямую, и из журнала; опоздавшие тоже не нужны.
+      if (time <= this.lastRawTime) return
+      this.lastRawTime = time
+      // Время точки, а не время доставки: пачка опоздавших точек не должна слипаться в один момент.
+      this.clockOffset = Math.min(this.clockOffset ?? Infinity, now - time)
+      t = Math.min(now, time + this.clockOffset)
+    }
     // Скорость GPS приходит в м/с; отрицательное значение = «не определена».
     const fix: GpsFix = {
-      t: Date.now(),
+      t,
       lat, lon,
       speedKmh: speedMs != null && speedMs >= 0 ? speedMs * 3.6 : null,
       accuracy: accuracy ?? 0,
       bearing: bearing ?? null,
     }
-    void time
     this.lastFix = fix
     this.onFix?.(fix)
   }

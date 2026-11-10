@@ -1,7 +1,7 @@
 import type { SensorSnapshot } from '@/types'
 import { fuelLitersPer100Km } from './FuelCalculator'
 import { haversineKm, type TrackPoint } from './TripAnalysis'
-import { TripRecorder, type Trip, type TripEvent } from './TripRecorder'
+import { MAX_GPS_GAP_MS, TripRecorder, type Trip, type TripEvent } from './TripRecorder'
 
 /** Если ни один датчик (OBD и GPS) 30 минут не показывает движения/работы двигателя — поездка завершается и сохраняется. */
 export const IDLE_END_MS = 30 * 60_000
@@ -11,6 +11,8 @@ const OBD_FRESH_MS = 5000
 const GPS_FRESH_MS = 10_000
 /** Скорость GPS ниже порога считаем шумом (стоим). */
 const GPS_NOISE_KMH = 2
+/** Смещение быстрее этого между редкими точками — выброс GPS, а не езда. */
+const GPS_MAX_KMH = 250
 /** Точность GPS хуже — точку не используем. */
 const GPS_MAX_ACCURACY_M = 60
 const MAX_POINTS = 1200
@@ -41,6 +43,8 @@ export class TripSession {
   private gps: { fix: GpsFix; at: number } | null = null
   private lastActivity = 0
   private lastPointAt = 0
+  /** Время последних обработанных данных (OBD или GPS). */
+  private lastAt = 0
   private lastPointPos: { lat: number; lon: number } | null = null
   private minIntervalMs = 4000
   private prevMil = false
@@ -69,16 +73,25 @@ export class TripSession {
   /** Новая точка GPS. */
   feedGps(now: number, fix: GpsFix): number {
     if (fix.accuracy > GPS_MAX_ACCURACY_M) return 0
-    // Часть телефонов (особенно по сети) отдаёт координаты без скорости — считаем её по смещению между точками.
     const prev = this.gps
-    if (fix.speedKmh == null && prev && now - prev.at > 0 && now - prev.at <= GPS_FRESH_MS) {
+    // Точка старее уже учтённых данных (опоздала) — пропускаем.
+    if (now < this.lastAt || (prev && now <= prev.at)) return 0
+    // Смещение с прошлой точки. В фоне и по сети точки приходят редко (раз в 10–60 с) и часто без скорости —
+    // тогда скорость и пробег считаем по координатам, иначе такая поездка не записалась бы вовсе.
+    let gapKm: number | null = null
+    const dt = prev ? now - prev.at : 0
+    if (prev && dt <= MAX_GPS_GAP_MS) {
       const metres = haversineKm(prev.fix, fix) * 1000
       // Смещение меньше погрешности GPS — это стоянка, а не движение.
       const noise = Math.max(prev.fix.accuracy, fix.accuracy, 5)
-      fix = { ...fix, speedKmh: metres < noise ? 0 : (metres / ((now - prev.at) / 1000)) * 3.6 }
+      const kmh = metres < noise ? 0 : (metres / (dt / 1000)) * 3.6
+      if (kmh <= GPS_MAX_KMH) {
+        gapKm = kmh > 0 ? metres / 1000 : 0
+        if (fix.speedKmh == null) fix = { ...fix, speedKmh: kmh }
+      }
     }
     this.gps = { fix, at: now }
-    return this.step(now)
+    return this.step(now, gapKm)
   }
 
   private obdNow(now: number): SensorSnapshot | null {
@@ -88,7 +101,8 @@ export class TripSession {
     return this.gps && now - this.gps.at <= GPS_FRESH_MS ? this.gps.fix : null
   }
 
-  private step(now: number): number {
+  private step(now: number, gapKm: number | null = null): number {
+    this.lastAt = Math.max(this.lastAt, now)
     const obd = this.obdNow(now)
     const gps = this.gpsNow(now)
     const gpsSpeed = gps?.speedKmh != null ? (gps.speedKmh < GPS_NOISE_KMH ? 0 : gps.speedKmh) : null
@@ -105,7 +119,7 @@ export class TripSession {
     if (gps) this.sources.add('gps')
 
     const maf = obd?.mafGs ?? null
-    const km = this.rec.feed(now, speed, maf)
+    const km = this.rec.feed(now, speed, maf, gapKm)
     this.recordPoint(now, obd, gps, speed)
     return km
   }
@@ -181,6 +195,7 @@ export class TripSession {
     this.points = []
     this.obd = null
     this.gps = null
+    this.lastAt = 0
     this.prevMil = false
     if (!trip) return null
     trip.hasTrack = points.length >= 2

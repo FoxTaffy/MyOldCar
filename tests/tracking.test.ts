@@ -41,6 +41,36 @@ describe('TripSession: автозапись и 30-минутный таймау�
     expect(done.points.some((p) => p.lat != null)).toBe(true)
   })
 
+  it('редкие точки GPS (фон, раз в 30 с) дают полную поездку, а не несколько секунд', () => {
+    const s = new TripSession()
+    let t = 0
+    // 40 минут, точка раз в 30 с, ~333 м между точками ≈ 40 км/ч; у половины точек нет скорости
+    for (let i = 0; i <= 80; i++, t += 30_000) s.feedGps(t, { t, lat: 55.75 + i * 0.003, lon: 37.62, speedKmh: i % 2 ? 40 : null, accuracy: 15 })
+    const trip = s.trip!
+    expect(trip.movingMs + trip.stoppedMs).toBeGreaterThanOrEqual(39 * MIN) // первая точка без скорости только задаёт начало отсчёта
+    expect(trip.distanceKm).toBeGreaterThan(25)
+    expect(trip.distanceKm).toBeLessThan(28)
+  })
+
+  it('редкие точки на стоянке пробег не накручивают, скачок GPS не считается ездой', () => {
+    const s = new TripSession()
+    s.feedObd(0, obd(0, { rpm: 800, speedKmh: null }))
+    let t = 1000
+    for (let i = 0; i < 20; i++, t += 30_000) s.feedGps(t, { t, lat: 55.75 + (i % 2) * 0.00005, lon: 37.62, speedKmh: null, accuracy: 20 })
+    expect(s.trip!.distanceKm).toBe(0)
+    s.feedGps(t, { t, lat: 56.75, lon: 37.62, speedKmh: null, accuracy: 20 }) // 111 км за 30 с
+    expect(s.trip!.distanceKm).toBe(0)
+  })
+
+  it('опоздавшая точка GPS (старее уже учтённых данных) игнорируется', () => {
+    const s = new TripSession()
+    let t = 100_000
+    for (let i = 0; i < 10; i++, t += 1000) s.feedObd(t, obd(t, { speedKmh: 50 }))
+    const before = { ...s.trip! }
+    s.feedGps(50_000, fix(50_000, 80))
+    expect(s.trip).toEqual(before)
+  })
+
   it('без активности поездка не начинается (двигатель заглушен, GPS стоит)', () => {
     const s = new TripSession()
     for (let t = 0; t < 10_000; t += 1000) s.feedGps(t, fix(t, 0))

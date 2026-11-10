@@ -31,8 +31,10 @@ export interface Trip {
 export const tripAvgSpeed = (t: Trip): number => (t.movingMs > 0 ? t.distanceKm / (t.movingMs / 3_600_000) : 0)
 export const tripConsumption = (t: Trip): number | null => (t.distanceKm >= 0.5 && t.fuelL > 0 ? (t.fuelL / t.distanceKm) * 100 : null)
 
-/** Пропуски в данных длиннее этого не интегрируем (потеря связи, пауза опроса). */
+/** Пропуски в данных длиннее этого по скорости не интегрируем (потеря связи, пауза опроса). */
 const MAX_GAP_MS = 5000
+/** Пропуск до 10 минут можно закрыть смещением по GPS (редкие точки в фоне, тоннель). */
+export const MAX_GPS_GAP_MS = 10 * 60_000
 
 /** Интегрирует скорость и расход ДМРВ в поездку. Не зависит от железа — легко тестируется. */
 export class TripRecorder {
@@ -44,17 +46,28 @@ export class TripRecorder {
     this.last = null
   }
 
-  /** Возвращает приращение пробега, км. mafGs=null — расход за этот интервал не считаем (нет данных ДМРВ). */
-  feed(t: number, speedKmh: number | null, mafGs: number | null): number {
+  /**
+   * Возвращает приращение пробега, км. mafGs=null — расход за этот интервал не считаем (нет данных ДМРВ).
+   * gapKm — смещение по GPS с прошлой точки: им закрываем пропуск, слишком длинный для интегрирования скорости.
+   */
+  feed(t: number, speedKmh: number | null, mafGs: number | null, gapKm?: number | null): number {
     const trip = this.current
     if (!trip || speedKmh == null) return 0
     const prev = this.last
+    // Опоздавшие данные (старее уже учтённых) не должны сбивать счёт времени.
+    if (prev && t <= prev.t) return 0
     this.last = { t, speed: speedKmh }
     trip.maxSpeedKmh = Math.max(trip.maxSpeedKmh, speedKmh)
     trip.end = t
     if (!prev) return 0
     const dt = t - prev.t
-    if (dt <= 0 || dt > MAX_GAP_MS) return 0
+    if (dt > MAX_GAP_MS) {
+      if (gapKm == null || dt > MAX_GPS_GAP_MS) return 0
+      trip.distanceKm += gapKm
+      if (gapKm > 0) trip.movingMs += dt
+      else trip.stoppedMs += dt
+      return gapKm
+    }
     const km = (((prev.speed + speedKmh) / 2) * dt) / 3_600_000
     trip.distanceKm += km
     if (speedKmh >= 1 || prev.speed >= 1) trip.movingMs += dt

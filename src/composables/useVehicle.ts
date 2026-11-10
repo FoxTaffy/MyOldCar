@@ -136,8 +136,10 @@ function endTrip(): void {
   refreshTripLive()
 }
 
-/** Раз в 30 с проверяем: если все датчики молчат 30 минут — поездка сохраняется. */
-function idleCheck(): void {
+/** Раз в 30 с: дочитываем пропущенные точки GPS и проверяем — если все датчики молчат 30 минут, поездка сохраняется. */
+async function idleCheck(): Promise<void> {
+  // Сначала дочитываем точки, которые служба GPS записала, пока приложение спало, — иначе поездку закроет таймер простоя.
+  await gps.syncLog()
   const done = session.tick(Date.now())
   if (done) {
     garage.finishTrip(done)
@@ -279,12 +281,13 @@ async function disconnect(): Promise<void> {
 
 /** Вызывать один раз при старте приложения. */
 function autoStart(): void {
-  if (!idleTimer) idleTimer = setInterval(idleCheck, IDLE_CHECK_MS)
+  if (!idleTimer) idleTimer = setInterval(() => { void idleCheck() }, IDLE_CHECK_MS)
   startGps()
   if (prefs.onboarded && prefs.autoConnect && prefs.mode !== 'mock') void connect(true)
   if (typeof document !== 'undefined') {
     // Вернулись в приложение — пробуем сразу, не ждём таймер.
     document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) void idleCheck()
       if (!document.hidden && status.value === 'disconnected' && !manualStop && prefs.autoConnect && prefs.onboarded && prefs.mode !== 'mock') {
         void connect(true)
       }
