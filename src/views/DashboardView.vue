@@ -6,9 +6,10 @@ import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { Ema, fuelLitersPer100Km, fuelLitersPerHour } from '@/services/FuelCalculator'
 import { liters, num, span } from '@/utils/format'
+import { READY_C } from '@/services/WarmupTracker'
 import type { Level } from '@/types'
 
-const { snapshot, pollMode, isConnected, status, prefs, ecuSilent, tripLive, milOn, gpsState, gpsFix, gpsError, tripActive, endTrip, startGps, openGpsSettings } = useVehicle()
+const { snapshot, pollMode, isConnected, status, prefs, ecuSilent, tripLive, milOn, gpsState, gpsFix, gpsError, tripActive, warmupInfo, endTrip, startGps, openGpsSettings } = useVehicle()
 const { garage, car, oil } = useGarage()
 pollMode.value = 'normal'
 
@@ -103,6 +104,15 @@ const gpsText = computed(() => {
     <p v-else-if="ecuSilent" class="border border-warn p-3 text-sm text-warn">
       Адаптер на связи, но ЭБУ не отвечает. Включите зажигание — показания появятся сами.
     </p>
+    <div v-if="isConnected && warmupInfo.state === 'warming'" class="border border-warn p-3">
+      <div class="flex items-baseline justify-between text-sm">
+        <b class="text-warn">Двигатель прогревается</b>
+        <span class="font-mono text-xs muted">{{ num(warmupInfo.tempC) }} / {{ READY_C }} °C<template v-if="warmupInfo.etaMin != null"> · ~{{ warmupInfo.etaMin }} мин</template></span>
+      </div>
+      <div class="mt-2 h-1.5 bg-night-600"><div class="h-full bg-warn transition-all" :style="{ width: Math.round(warmupInfo.progress * 100) + '%' }" /></div>
+      <p class="mt-2 text-xs muted">Когда ОЖ дойдёт до {{ READY_C }} °C, придёт уведомление — можно ехать.</p>
+    </div>
+    <div v-else-if="isConnected && warmupInfo.state === 'ready' && (snapshot?.coolantTempC ?? 0) >= READY_C" class="border border-ok p-2 text-sm text-ok">Двигатель прогрет — можно ехать.</div>
 
     <div class="grid grid-cols-2 gap-2">
       <GaugeTile label="Скорость" :value="num(snapshot?.speedKmh)" unit="км/ч" :level="speedLevel(snapshot?.speedKmh ?? null)" />
