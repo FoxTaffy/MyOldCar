@@ -2,6 +2,7 @@ import type { SensorSnapshot } from '@/types'
 import { fuelLitersPer100Km } from './FuelCalculator'
 import { haversineKm, type TrackPoint } from './TripAnalysis'
 import type { SensorDef } from '@/data/sensors'
+import { analyzeStyle } from './DrivingStyle'
 import { MAX_GPS_GAP_MS, TripRecorder, type Trip, type TripEvent } from './TripRecorder'
 
 /** Если ни один датчик (OBD и GPS) 30 минут не показывает движения/работы двигателя — поездка завершается и сохраняется. */
@@ -58,6 +59,8 @@ export class TripSession {
   onMil?: (ev: TripEvent) => void
   /** Демо-режим: новые поездки помечаются как демонстрационные. */
   demo = false
+  /** Порог превышения скорости для оценки стиля вождения, км/ч. */
+  speedLimit = 110
 
   constructor(private carId?: string, defs: () => SensorDef[] = () => []) {
     this.rec = new TripRecorder(defs)
@@ -243,6 +246,7 @@ export class TripSession {
     trip.hasTrack = points.length >= 2
     trip.source = this.sources.has('obd') && this.sources.has('gps') ? 'both' : this.sources.has('gps') ? 'gps' : 'obd'
     this.sources.clear()
+    if (points.length >= 2) trip.style = analyzeStyle(points, this.speedLimit)
     return { trip, points }
   }
 
@@ -250,7 +254,7 @@ export class TripSession {
   static finalize(trip: Trip, points: TrackPoint[]): FinishedTrip | null {
     if (trip.distanceKm < 0.1) return null
     const last = points.length ? points[points.length - 1].t : trip.end
-    return { trip: { ...trip, end: last, hasTrack: points.length >= 2 }, points }
+    return { trip: { ...trip, end: last, hasTrack: points.length >= 2, style: points.length >= 2 ? analyzeStyle(points) : undefined }, points }
   }
 }
 

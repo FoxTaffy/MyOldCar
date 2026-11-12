@@ -1,18 +1,21 @@
 /** @type {import('tailwindcss').Config} */
+const v = (name) => `rgb(var(--${name}) / <alpha-value>)`
 export default {
   content: ['./index.html', './src/**/*.{vue,ts}'],
   theme: {
-    borderRadius: { none: '0', sm: '3px', DEFAULT: '3px' },
+    borderRadius: { none: '0', sm: '6px', DEFAULT: '10px', md: '10px', lg: '14px', xl: '18px', '2xl': '22px', '3xl': '28px', full: '9999px' },
     extend: {
       colors: {
-        // Нейтральный графит с лёгким синим подтоном; без градиентов и свечения.
-        night: { 950: '#090b0f', 900: '#0d1015', 800: '#12161d', 700: '#1a202a', 600: '#262e3b' },
-        accent: { DEFAULT: '#4a86c8', glow: '#7fb0e6' },
-        ok: '#5fae7a', warn: '#d6a23f', bad: '#d9594c',
+        // Все цвета — переменные: светлая и тёмная темы переключаются атрибутом data-theme (см. style.css).
+        night: { 950: v('bg'), 900: v('inset'), 800: v('card'), 700: v('raised'), 600: v('line') },
+        ink: v('ink'), soft: v('soft'), mute: v('mute'), faint: v('faint'),
+        accent: { DEFAULT: v('accent'), glow: v('accent-glow'), soft: v('accent-soft'), on: v('on-accent') },
+        ok: v('ok'), warn: v('warn'), bad: v('bad'),
       },
+      boxShadow: { card: '0 1px 2px rgb(var(--shadow) / 0.06), 0 4px 14px rgb(var(--shadow) / 0.05)' },
       fontFamily: {
-        sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        sans: ['Roboto', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        mono: ['Roboto', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       },
     },
   },

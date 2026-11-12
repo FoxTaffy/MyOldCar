@@ -126,7 +126,7 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
         <div v-if="report.protocol"><dt>Протокол</dt><dd class="!font-sans">{{ report.protocol }}</dd></div>
       </dl>
       <p v-if="!results.length" class="mt-2 text-sm muted">Память ЭБУ чиста: ни сохранённых, ни временных кодов.</p>
-      <p class="mt-2 text-xs text-[#5f6978]">Приложение только читает коды и ничего не стирает в ЭБУ.</p>
+      <p class="mt-2 text-xs text-faint">Приложение только читает коды и ничего не стирает в ЭБУ.</p>
     </div>
 
     <div v-if="freezeRows.length" class="card p-4">
@@ -142,7 +142,7 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
           <input v-model="settings[t.key]" type="checkbox" class="mt-0.5" />
           <span>{{ t.label }}</span>
         </label>
-        <p class="text-xs text-[#5f6978]">Отметьте подходящее — вероятности причин пересчитаются сразу.</p>
+        <p class="text-xs text-faint">Отметьте подходящее — вероятности причин пересчитаются сразу.</p>
       </div>
     </details>
 
@@ -152,8 +152,8 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
           <span class="font-mono text-2xl font-semibold" :class="r.status === 'pending' ? 'text-warn' : 'text-bad'">{{ r.code }}</span>
           <span class="label" :class="r.status === 'pending' ? 'text-warn' : 'text-bad'">{{ r.status === 'pending' ? 'Временная' : 'Подтверждённая' }}</span>
         </div>
-        <div class="mt-1 text-sm text-[#d5dae2]">{{ r.info.title }}</div>
-        <div class="mt-1 text-xs text-[#5f6978]">{{ r.info.system }}<template v-if="r.info.subsystem"> · {{ r.info.subsystem }}</template> · {{ r.info.kind === 'generic' ? 'универсальный код' : 'заводской код' }}</div>
+        <div class="mt-1 text-sm text-ink">{{ r.info.title }}</div>
+        <div class="mt-1 text-xs text-faint">{{ r.info.system }}<template v-if="r.info.subsystem"> · {{ r.info.subsystem }}</template> · {{ r.info.kind === 'generic' ? 'универсальный код' : 'заводской код' }}</div>
       </header>
       <ul v-if="r.modeled" class="space-y-3">
         <li v-for="c in r.causes" :key="c.id">
@@ -169,9 +169,9 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
       </ul>
       <div v-else class="border-l-2 border-accent pl-3">
         <div class="label">{{ r.causes[0].title }}</div>
-        <p class="mt-1 text-sm text-[#aab3c0]">{{ r.causes[0].recommendation }}</p>
+        <p class="mt-1 text-sm text-soft">{{ r.causes[0].recommendation }}</p>
       </div>
-      <details v-if="r.notes.length" class="text-xs text-[#5f6978]">
+      <details v-if="r.notes.length" class="text-xs text-faint">
         <summary class="cursor-pointer">Почему такие вероятности</summary>
         <ul class="mt-1 list-disc space-y-1 pl-5"><li v-for="n in r.notes" :key="n">{{ n }}</li></ul>
       </details>
@@ -190,8 +190,8 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
             <span class="min-w-0 flex-1">{{ d.title }}</span>
           </button>
           <div v-if="opened === d.code" class="mb-2 ml-[4.25rem] space-y-1 border-l-2 border-night-600 pl-3 text-xs">
-            <p class="text-[#5f6978]">{{ d.system }}<template v-if="d.subsystem"> · {{ d.subsystem }}</template> · {{ d.kind === 'generic' ? 'универсальный' : 'заводской' }}<template v-if="isKnownCode(d.code)"> · есть оценка причин</template></p>
-            <p class="text-[#aab3c0]">{{ dtcAdvice(d.code) }}</p>
+            <p class="text-faint">{{ d.system }}<template v-if="d.subsystem"> · {{ d.subsystem }}</template> · {{ d.kind === 'generic' ? 'универсальный' : 'заводской' }}<template v-if="isKnownCode(d.code)"> · есть оценка причин</template></p>
+            <p class="text-soft">{{ dtcAdvice(d.code) }}</p>
           </div>
         </li>
       </ul>
@@ -200,10 +200,10 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
         <p class="text-sm muted">{{ lookup ? 'Точной расшифровки нет. По структуре кода:' : 'Ничего не найдено. Введите код целиком (например, P0171) или слово из описания.' }}</p>
         <template v-if="lookup">
           <p class="text-sm">{{ lookup.title }}</p>
-          <p class="text-xs text-[#aab3c0]">{{ dtcAdvice(lookup.code) }}</p>
+          <p class="text-xs text-soft">{{ dtcAdvice(lookup.code) }}</p>
         </template>
       </template>
-      <p v-if="!query.trim()" class="text-xs text-[#5f6978]">Универсальные коды SAE (P0, P2, U0, часть B/C) и заводские P1 для ВАЗ/LADA. Заводские коды зависят от блока — сверяйтесь с документацией на свой ЭБУ.</p>
+      <p v-if="!query.trim()" class="text-xs text-faint">Универсальные коды SAE (P0, P2, U0, часть B/C) и заводские P1 для ВАЗ/LADA. Заводские коды зависят от блока — сверяйтесь с документацией на свой ЭБУ.</p>
     </div>
   </section>
 </template>

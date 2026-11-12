@@ -59,22 +59,22 @@ function doExport(): void {
 
 <template>
   <section class="space-y-2">
-    <p v-if="!isConnected" class="border border-night-600 p-3 text-sm text-[#7b8696]">Нет связи с адаптером. Цвет датчиков появится после подключения (в демо-режиме значения симулируются).</p>
+    <p v-if="!isConnected" class="rounded-xl border border-night-600 p-3 text-sm text-mute">Нет связи с адаптером. Цвет датчиков появится после подключения (в демо-режиме значения симулируются).</p>
 
     <div v-if="ecuStatus" class="card space-y-2 p-3 text-sm">
       <div class="label">Статус ЭБУ</div>
-      <div class="flex justify-between"><span class="text-[#7b8696]">Лампа Check Engine</span><span class="font-mono" :class="ecuStatus.mil ? 'text-bad' : 'text-ok'">{{ ecuStatus.mil ? 'ГОРИТ' : 'выключена' }}</span></div>
-      <div class="flex justify-between"><span class="text-[#7b8696]">Кодов неисправностей</span><span class="font-mono" :class="ecuStatus.dtcCount ? 'text-bad' : 'text-ok'">{{ ecuStatus.dtcCount }}</span></div>
-      <div v-if="fuelSys" class="flex justify-between gap-3"><span class="shrink-0 text-[#7b8696]">Топливная система</span><span class="text-right text-xs" :class="TONE[fuelSys.level]">{{ fuelSys.text }}</span></div>
+      <div class="flex justify-between"><span class="text-mute">Лампа Check Engine</span><span class="font-mono" :class="ecuStatus.mil ? 'text-bad' : 'text-ok'">{{ ecuStatus.mil ? 'ГОРИТ' : 'выключена' }}</span></div>
+      <div class="flex justify-between"><span class="text-mute">Кодов неисправностей</span><span class="font-mono" :class="ecuStatus.dtcCount ? 'text-bad' : 'text-ok'">{{ ecuStatus.dtcCount }}</span></div>
+      <div v-if="fuelSys" class="flex justify-between gap-3"><span class="shrink-0 text-mute">Топливная система</span><span class="text-right text-xs" :class="TONE[fuelSys.level]">{{ fuelSys.text }}</span></div>
       <details>
-        <summary class="cursor-pointer text-xs text-[#7b8696]">Тесты готовности ({{ ecuStatus.monitors.filter((m) => m.supported && m.complete).length }}/{{ ecuStatus.monitors.filter((m) => m.supported).length }})</summary>
+        <summary class="cursor-pointer text-xs text-mute">Тесты готовности ({{ ecuStatus.monitors.filter((m) => m.supported && m.complete).length }}/{{ ecuStatus.monitors.filter((m) => m.supported).length }})</summary>
         <ul class="mt-1 space-y-0.5 text-xs">
           <li v-for="m in ecuStatus.monitors.filter((x) => x.supported)" :key="m.name" class="flex justify-between"><span>{{ m.name }}</span><span :class="m.complete ? 'text-ok' : 'text-warn'">{{ m.complete ? 'завершён' : 'не завершён' }}</span></li>
         </ul>
       </details>
     </div>
 
-    <div class="grid grid-cols-3 gap-px border border-night-600 bg-night-600 text-center">
+    <div class="rounded-xl grid grid-cols-3 gap-px border border-night-600 bg-night-600 text-center">
       <div class="bg-night-800 p-2"><div class="font-mono text-xl text-ok">{{ summary.ok }}</div><div class="label">норма</div></div>
       <div class="bg-night-800 p-2"><div class="font-mono text-xl text-warn">{{ summary.warn }}</div><div class="label">внимание</div></div>
       <div class="bg-night-800 p-2"><div class="font-mono text-xl text-bad">{{ summary.bad }}</div><div class="label">вне нормы</div></div>
@@ -91,8 +91,8 @@ function doExport(): void {
 
     <div v-if="showImport" class="card space-y-3 p-3">
       <div class="label">Импорт датчиков (JSON)</div>
-      <p class="text-xs text-[#7b8696]">Только чтение: допускаются PID режима 01, формула по байтам A–D (+ − × ÷ и скобки). Зоны: <code>ok</code> — зелёная, <code>warn</code> — оранжевая, остальное — красная.</p>
-      <pre class="overflow-x-auto border border-night-600 bg-night-900 p-2 font-mono text-[11px] text-[#aab3c0]">{{ IMPORT_EXAMPLE }}</pre>
+      <p class="text-xs text-mute">Только чтение: допускаются PID режима 01, формула по байтам A–D (+ − × ÷ и скобки). Зоны: <code>ok</code> — зелёная, <code>warn</code> — оранжевая, остальное — красная.</p>
+      <pre class="rounded-xl overflow-x-auto border border-night-600 bg-night-900 p-2 font-mono text-[11px] text-soft">{{ IMPORT_EXAMPLE }}</pre>
       <textarea v-model="text" rows="5" class="field !text-xs" placeholder='Вставьте JSON сюда…' />
       <div class="flex flex-wrap gap-2">
         <button class="btn !py-2 !text-xs" :disabled="!text.trim()" @click="doImport">Импортировать</button>
@@ -104,7 +104,7 @@ function doExport(): void {
       <div class="label">Список датчиков</div>
       <ul class="divide-y divide-night-600 text-sm">
         <li v-for="d in sensors.allDefs.value" :key="d.id" class="flex items-center justify-between gap-2 py-1.5">
-          <label class="flex min-w-0 items-center gap-2"><input type="checkbox" :checked="!sensors.isHidden(d.id)" @change="sensors.toggle(d.id)"><span class="truncate">{{ d.name }}</span><span v-if="d.pid" class="font-mono text-[10px] text-[#7b8696]">01{{ d.pid }}</span></label>
+          <label class="flex min-w-0 items-center gap-2"><input type="checkbox" :checked="!sensors.isHidden(d.id)" @change="sensors.toggle(d.id)"><span class="truncate">{{ d.name }}</span><span v-if="d.pid" class="font-mono text-[10px] text-mute">01{{ d.pid }}</span></label>
           <button v-if="d.custom" class="text-xs text-bad" @click="sensors.remove(d.id)">удалить</button>
         </li>
       </ul>

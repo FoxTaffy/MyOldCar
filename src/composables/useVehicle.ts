@@ -12,6 +12,7 @@ import { Notifier } from '@/services/Notifier'
 import type { SensorDef } from '@/data/sensors'
 import { WarmupTracker, type WarmupInfo } from '@/services/WarmupTracker'
 import { useGarage } from '@/composables/useGarage'
+import { useUi } from '@/composables/useUi'
 import { DEFAULT_SETTINGS, type AppSettings, type ConnectionKind, type ConnectionMode, type SensorSnapshot } from '@/types'
 
 /* Модульный синглтон: одно соединение с адаптером на всё приложение. */
@@ -45,6 +46,10 @@ const prefs = reactive(load(PREFS_KEY, {
   onboarded: false,
   /** Фоновая запись поездок: GPS + службой переднего плана (работает при свёрнутом приложении). */
   backgroundTracking: true,
+  /** Сколько ждать ответа адаптера, мс (короче — быстрее опрос, но на К-линии выше риск потери ответов). */
+  timeoutMs: 5000,
+  /** Попыток подключения по Bluetooth за один заход. */
+  attempts: 3,
 }))
 watch(prefs, (v) => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(v)) } catch { /* ignore */ } }, { deep: true })
 
@@ -68,6 +73,8 @@ const protocolName = ref<string | null>(null)
 const garage = useGarage()
 const sensors = useSensors()
 const session = new TripSession(garage.car().id, () => sensors.allDefs.value)
+const { ui } = useUi()
+watch(() => ui.speedLimit, (n) => { session.speedLimit = n }, { immediate: true })
 const notifier = new Notifier()
 /** Значения всех датчиков по id (ядро из снимка + PID-датчики), обновляются каждый цикл. */
 const values = shallowRef<Record<string, number | null>>({})
@@ -305,7 +312,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 }
 
 async function tryKind(kind: ConnectionKind): Promise<ELMService> {
-  const svc = createElmService({ kind, host: prefs.host.trim(), port: prefs.port, bleId: prefs.bleId, protocol: prefs.protocol })
+  const svc = createElmService({ kind, host: prefs.host.trim(), port: prefs.port, bleId: prefs.bleId, protocol: prefs.protocol, timeoutMs: prefs.timeoutMs, attempts: prefs.attempts })
   svc.onProgress = (m) => { note.value = m }
   connecting = svc
   try {

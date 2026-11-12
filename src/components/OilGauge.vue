@@ -20,21 +20,21 @@ const thousands = (km: number): string => num(km / 1000, km % 1000 ? 1 : 0).repl
       <span class="font-mono text-xs muted">замена: {{ date }}<template v-if="status.daysSince != null"> · {{ status.daysSince }} дн.</template></span>
     </div>
     <template v-if="status.configured">
-      <div class="relative h-3 bg-night-700">
+      <div class="relative h-3 overflow-hidden rounded-full bg-night-700">
         <div class="absolute inset-y-0 left-0" :class="bar" :style="{ width: fill + '%' }" />
         <span v-for="i in 9" :key="i" class="absolute inset-y-0 w-px bg-night-950/70" :style="{ left: i * 10 + '%' }" />
       </div>
-      <div class="mt-1 flex justify-between font-mono text-[10px] text-[#5f6978]">
+      <div class="mt-1 flex justify-between font-mono text-[10px] text-faint">
         <span>0</span><span>{{ thousands(intervalKm / 2) }}</span><span>{{ thousands(intervalKm) }} тыс. км</span>
       </div>
       <div class="mt-1 flex items-baseline justify-between gap-2">
         <span class="font-mono text-2xl font-semibold tabular-nums" :class="text">{{ int(status.sinceKm) }} <span class="tile-unit">км с замены</span></span>
-        <span class="text-right font-mono text-sm" :class="status.leftKm < 0 ? 'text-bad' : 'text-[#aab3c0]'">
+        <span class="text-right font-mono text-sm" :class="status.leftKm < 0 ? 'text-bad' : 'text-soft'">
           {{ status.leftKm >= 0 ? 'осталось ' + int(status.leftKm) : 'перепробег ' + int(-status.leftKm) }} км
         </span>
       </div>
       <p v-if="status.overdueByTime" class="mt-1 text-xs text-bad">С замены прошло больше {{ OIL_MAX_DAYS }} дней — масло пора менять по сроку, даже если пробег не вышел.</p>
     </template>
-    <p v-else class="text-sm muted">Дата замены не указана — задайте её на вкладке «Сервис».</p>
+    <p v-else class="text-sm muted">Дата замены не указана — задайте её на экране «Журнал обслуживания».</p>
   </div>
 </template>

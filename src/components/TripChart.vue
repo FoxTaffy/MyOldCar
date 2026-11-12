@@ -62,19 +62,19 @@ const mins = (s: number) => `${Math.round(s / 60)}м`
 <template>
   <div v-if="ids.length">
     <div class="mb-2 flex flex-wrap gap-1">
-      <button v-for="id in ids" :key="id" class="border px-2 py-1 text-[11px] font-semibold uppercase tracking-wider" :class="cur === id ? 'border-accent bg-accent text-night-950' : 'border-night-600 text-[#7b8696]'" @click="sel = id">
+      <button v-for="id in ids" :key="id" class="chip !px-3 !py-1 !text-xs" :class="cur === id ? 'on' : ''" @click="sel = id">
         {{ BUILTIN_SENSORS.find((d) => d.id === id)?.name }}
       </button>
     </div>
     <svg :viewBox="`0 0 ${W} ${H}`" class="w-full" role="img" :aria-label="`График: ${def?.name}`">
       <rect v-for="(b, i) in bands" :key="i" :x="L" :y="b.y" :width="W - L - 6" :height="b.h" :fill="FILL[b.level]" opacity="0.13" />
-      <text :x="L - 4" :y="y(range[1]) + 8" text-anchor="end" font-size="10" fill="#7b8696">{{ Math.round(range[1]) }}</text>
-      <text :x="L - 4" :y="y(range[0])" text-anchor="end" font-size="10" fill="#7b8696">{{ Math.round(range[0]) }}</text>
-      <text :x="L" :y="H - 3" font-size="10" fill="#7b8696">0</text>
-      <text :x="W - 6" :y="H - 3" text-anchor="end" font-size="10" fill="#7b8696">{{ mins(tMax) }}</text>
-      <path :d="path" fill="none" stroke="#e8ecf2" stroke-width="1.8" stroke-linejoin="round" />
+      <text :x="L - 4" :y="y(range[1]) + 8" text-anchor="end" font-size="10" fill="rgb(var(--mute))">{{ Math.round(range[1]) }}</text>
+      <text :x="L - 4" :y="y(range[0])" text-anchor="end" font-size="10" fill="rgb(var(--mute))">{{ Math.round(range[0]) }}</text>
+      <text :x="L" :y="H - 3" font-size="10" fill="rgb(var(--mute))">0</text>
+      <text :x="W - 6" :y="H - 3" text-anchor="end" font-size="10" fill="rgb(var(--mute))">{{ mins(tMax) }}</text>
+      <path :d="path" fill="none" stroke="rgb(var(--ink))" stroke-width="1.8" stroke-linejoin="round" />
     </svg>
-    <p class="mt-1 text-[11px] text-[#7b8696]">{{ def?.name }}, {{ def?.unit }} · фон: зелёный — норма, оранжевый — внимание, красный — вне нормы</p>
+    <p class="mt-1 text-[11px] text-mute">{{ def?.name }}, {{ def?.unit }} · фон: зелёный — норма, оранжевый — внимание, красный — вне нормы</p>
   </div>
-  <p v-else class="text-xs text-[#7b8696]">График для этой поездки не записан.</p>
+  <p v-else class="text-xs text-mute">График для этой поездки не записан.</p>
 </template>
