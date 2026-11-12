@@ -4,6 +4,7 @@ import { useDiagnostics } from '@/composables/useDiagnostics'
 import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { describeDtc, dtcAdvice, DTC_COUNT, findDtcs, isDtcCode } from '@/data/dtcDictionary'
+import { carHint, knowledgeFor } from '@/data/carKnowledge'
 import { carTitle } from '@/services/Cars'
 import { isKnownCode } from '@/services/DiagnosticEngine'
 import { dateTime, num } from '@/utils/format'
@@ -22,7 +23,8 @@ const toggles: { key: keyof typeof settings; label: string }[] = [
 ]
 const contextCount = computed(() => toggles.filter((t) => settings[t.key]).length)
 
-const cards = computed(() => results.value.map((r) => ({ ...r, info: describeDtc(r.code) })))
+const knowledge = computed(() => knowledgeFor(car()))
+const cards = computed(() => results.value.map((r) => ({ ...r, info: describeDtc(r.code), carHint: carHint(knowledge.value, r.code) })))
 const confirmed = computed(() => results.value.filter((r) => r.status !== 'pending').length)
 const pending = computed(() => results.value.length - confirmed.value)
 
@@ -68,7 +70,7 @@ async function copy(): Promise<void> {
     freezeRows.value.length ? 'Стоп-кадр: ' + freezeRows.value.map(([k, v]) => `${k} ${v}`).join('; ') : '',
   ].filter(Boolean).join('\n')
   const body = cards.value
-    .map((c) => `${c.code} (${c.status === 'pending' ? 'временная' : 'подтверждённая'}) — ${c.info.title}\n` + c.causes.map((x) => (c.modeled ? `  ${x.probability}% ${x.title}` : `  ${x.recommendation}`)).join('\n'))
+    .map((c) => `${c.code} (${c.status === 'pending' ? 'временная' : 'подтверждённая'}) — ${c.info.title}\n` + c.causes.map((x) => (c.modeled ? `  ${x.probability}% ${x.title}` : `  ${x.recommendation}`)).join('\n') + (c.carHint ? `\n  ${knowledge.value?.title}: ${c.carHint}` : ''))
     .join('\n\n')
   try {
     await navigator.clipboard.writeText([head, body].filter(Boolean).join('\n\n'))
@@ -170,6 +172,10 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
       <div v-else class="border-l-2 border-accent pl-3">
         <div class="label">{{ r.causes[0].title }}</div>
         <p class="mt-1 text-sm text-soft">{{ r.causes[0].recommendation }}</p>
+      </div>
+      <div v-if="r.carHint" class="border-l-2 border-accent pl-3">
+        <div class="label">{{ knowledge?.title }}</div>
+        <p class="mt-1 text-sm text-soft">{{ r.carHint }}</p>
       </div>
       <details v-if="r.notes.length" class="text-xs text-faint">
         <summary class="cursor-pointer">Почему такие вероятности</summary>

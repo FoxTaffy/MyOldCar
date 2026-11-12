@@ -49,6 +49,16 @@ export const BUILTIN_SENSORS: SensorDef[] = [
   { id: 'ambient', name: 'Темп. снаружи', unit: '°C', digits: 0, pid: '46', formula: 'A-40', ok: R(-30, 40), warn: R(-40, 50), scale: [-40, 50] },
   { id: 'fuellvl', name: 'Уровень топлива', unit: '%', digits: 0, pid: '2F', formula: 'A*100/255', ok: R(15, 100), warn: R(8, 100), scale: [0, 100], hint: 'Ниже 15 % — оранжевый, ниже 8 % — красный' },
   { id: 'oiltemp', name: 'Темп. масла', unit: '°C', digits: 0, pid: '5C', formula: 'A-40', ok: R(70, 110), warn: R(-50, 125), scale: [-20, 140] },
+  { id: 'purge', name: 'Продувка адсорбера', unit: '%', digits: 0, pid: '2E', formula: 'A*100/255', scale: [0, 100], hint: 'Клапан EVAP: 0 % на холодном и на холостом — норма' },
+  { id: 'warmups', name: 'Прогревов после сброса', unit: '', digits: 0, pid: '30', formula: 'A', scale: [0, 255], hint: 'Счётчик (максимум 255) с момента последней очистки кодов' },
+  { id: 'distclr', name: 'Пробег после сброса', unit: 'км', digits: 0, pid: '31', formula: 'A*256+B', scale: [0, 65535], hint: 'С момента последней очистки кодов — малое число значит коды недавно стирали' },
+  { id: 'cattemp', name: 'Темп. катализатора', unit: '°C', digits: 0, pid: '3C', formula: '(A*256+B)/10-40', ok: R(150, 850), warn: R(-40, 950), scale: [0, 1000], hint: 'Выше 900 °C — пропуски зажигания жарят катализатор' },
+  { id: 'absload', name: 'Абс. нагрузка', unit: '%', digits: 0, pid: '43', formula: '(A*256+B)*100/255', scale: [0, 100] },
+  { id: 'lambda', name: 'Состав смеси (λ)', unit: '', digits: 2, pid: '44', formula: '(A*256+B)/32768', ok: R(0.95, 1.05), warn: R(0.8, 1.2), scale: [0.6, 1.4], hint: 'Команда ЭБУ: 1,00 — стехиометрия; < 1 обогащение' },
+  { id: 'reltps', name: 'Дроссель (отн.)', unit: '%', digits: 0, pid: '45', formula: 'A*100/255', scale: [0, 100] },
+  { id: 'pedal', name: 'Педаль газа', unit: '%', digits: 0, pid: '49', formula: 'A*100/255', scale: [0, 100] },
+  { id: 'fuelrate', name: 'Расход топлива', unit: 'л/ч', digits: 2, pid: '5E', formula: '(A*256+B)/20', scale: [0, 30], hint: 'Прямой расход, который отдаёт ЭБУ (не у всех блоков есть)' },
+  { id: 'torque', name: 'Крутящий момент', unit: '%', digits: 0, pid: '62', formula: 'A-125', scale: [-25, 100], hint: 'Актуальный момент двигателя, % от номинального' },
 ]
 
 const within = (v: number, [lo, hi]: Range): boolean => (lo == null || v >= lo) && (hi == null || v <= hi)
