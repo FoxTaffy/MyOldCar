@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
+import BrandLogo from '@/components/BrandLogo.vue'
 import { useGarage } from '@/composables/useGarage'
 import { drawerOpen, showWizard } from '@/composables/useUi'
+import { pushBack } from '@/services/BackHandler'
 import { carTitle, currentOdometer } from '@/services/Cars'
 import { int } from '@/utils/format'
 
+let offBack: (() => void) | null = null
+watch(drawerOpen, (open) => {
+  offBack?.()
+  offBack = open ? pushBack(() => { drawerOpen.value = false }) : null
+})
 const router = useRouter()
 const { car } = useGarage()
 const odo = computed(() => currentOdometer(car()))
-const initials = computed(() => (car().make || car().name || '?').slice(0, 2).toUpperCase())
 const items = [
   { to: '/garage', icon: 'car', title: 'Мои автомобили' },
   { to: '/connection', icon: 'plug', title: 'Подключение сканера' },
@@ -36,7 +42,7 @@ async function share(): Promise<void> {
     <Transition name="slide">
       <aside v-if="drawerOpen" class="fixed inset-y-0 left-0 z-50 flex w-[82%] max-w-xs flex-col bg-night-800 shadow-2xl" style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom)" aria-label="Меню">
         <button class="bg-gradient-to-br from-accent-soft to-night-800 px-5 pb-5 pt-6 text-left" @click="go('/garage')">
-          <span class="flex h-16 w-16 items-center justify-center rounded-full border border-night-600 bg-night-800 text-xl font-bold text-accent shadow-card">{{ initials }}</span>
+          <BrandLogo :make="car().make || car().name" :size="64" />
           <span class="mt-3 block truncate text-lg font-bold text-ink">{{ carTitle(car()) }}</span>
           <span class="block text-sm text-mute">{{ odo != null ? `${int(odo)} км · ` : '' }}{{ car().year ?? 'год не указан' }}</span>
         </button>

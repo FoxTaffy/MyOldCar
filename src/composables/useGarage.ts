@@ -4,6 +4,7 @@ import type { Expense } from '@/services/Expenses'
 import { itemStatus, type ServiceItem } from '@/services/Maintenance'
 import { DEFAULT_OIL, oilStatus } from '@/services/OilService'
 import type { TrackPoint } from '@/services/TripAnalysis'
+import { buildRoute, type Route } from '@/services/RouteSummary'
 import { TripSession, type FinishedTrip } from '@/services/TripSession'
 import type { Trip } from '@/services/TripRecorder'
 
@@ -11,6 +12,7 @@ const KEY = 'myoldcar.garage.v2'
 const OLD_KEY = 'myoldcar.garage.v1'
 const ACTIVE_KEY = 'myoldcar.active.v1'
 const trackKey = (id: string) => `myoldcar.track.${id}`
+const routeKey = (id: string) => `myoldcar.route.${id}`
 const MAX_TRIPS = 200
 /** Треки (точки на карте) тяжёлые — храним только у последних поездок. */
 const MAX_TRACKS = 30
@@ -52,7 +54,10 @@ function load(): Garage {
   } else {
     // Миграция с версии с одной машиной: её масло, пробег и поездки переходят в первую машину.
     const old = read<{ fuelPrice?: number; oil?: Car['oil']; trackedTotalKm?: number; trips?: Trip[] }>(OLD_KEY)
-    const car = newCar({ name: 'ВАЗ-2104', make: 'ВАЗ', model: '2104', oil: { ...DEFAULT_OIL, ...old?.oil }, trackedTotalKm: old?.trackedTotalKm ?? 0 })
+    // Новый пользователь: профиль пустой, без машины «по умолчанию» — приложение само предложит добавить свою.
+    const car = old
+      ? newCar({ name: 'ВАЗ-2104', make: 'ВАЗ', model: '2104', oil: { ...DEFAULT_OIL, ...old.oil }, trackedTotalKm: old.trackedTotalKm ?? 0 })
+      : newCar({ name: '', placeholder: true })
     base = { fuelPrice: old?.fuelPrice ?? 65, cars: [car], activeCarId: car.id, trips: (old?.trips ?? []).map((t) => ({ ...t, carId: car.id })), expenses: [] }
   }
   if (!base.cars.some((c) => c.id === base.activeCarId)) base.activeCarId = base.cars[0].id
@@ -70,6 +75,12 @@ function load(): Garage {
     write(KEY, base)
   }
   try { localStorage.removeItem(ACTIVE_KEY) } catch { /* ignore */ }
+  // Поездки, записанные до появления общей карты: маршрут строим из сохранённого трека (пока он ещё есть).
+  for (const t of base.trips) {
+    if (!t.hasTrack || localStorage.getItem(routeKey(t.id))) continue
+    const pts = read<TrackPoint[]>(trackKey(t.id))
+    if (pts) saveRoute(t.id, pts)
+  }
   return base
 }
 
@@ -98,8 +109,14 @@ function activeCar(): Car {
   return garage.cars.find((c) => c.id === garage.activeCarId) ?? garage.cars[0]
 }
 
+/** Удаляет только тяжёлый трек (компактный маршрут для общей карты остаётся). */
 function dropTrip(id: string): void {
   try { localStorage.removeItem(trackKey(id)) } catch { /* ignore */ }
+}
+/** Удаляет все данные поездки: трек и маршрут. */
+function dropTripAll(id: string): void {
+  dropTrip(id)
+  try { localStorage.removeItem(routeKey(id)) } catch { /* ignore */ }
 }
 
 /** Удаляет трек самой старой поездки (сама поездка и её цифры остаются). false — треков больше нет. */
@@ -126,6 +143,12 @@ function writeTrack(id: string, points: TrackPoint[]): boolean {
     if (write(trackKey(id), points)) return true
     if (!dropOldestTrack(id)) return false
   }
+}
+
+/** Сохраняет компактный маршрут; пустой не пишем. */
+function saveRoute(id: string, points: TrackPoint[]): void {
+  const r = buildRoute(points)
+  if (r.length >= 2) write(routeKey(id), r)
 }
 
 const finite = (n: unknown, fallback: number): number => (typeof n === 'number' && Number.isFinite(n) ? n : fallback)
@@ -159,17 +182,20 @@ export function useGarage() {
       flushActive()
       if (f) {
         if (f.trip.hasTrack && !writeTrack(f.trip.id, f.points)) f.trip.hasTrack = false
+        saveRoute(f.trip.id, f.points)
         garage.trips.push(f.trip)
         if (garage.trips.length > MAX_TRIPS) {
-          for (const t of garage.trips.splice(0, garage.trips.length - MAX_TRIPS)) dropTrip(t.id)
+          for (const t of garage.trips.splice(0, garage.trips.length - MAX_TRIPS)) dropTripAll(t.id)
         }
         pruneTracks()
       }
       saveNow()
     },
     loadTrack: (id: string): TrackPoint[] => read<TrackPoint[]>(trackKey(id)) ?? [],
+    /** Компактный маршрут поездки для общей карты (для всех поездок, не только последних 30). */
+    loadRoute: (id: string): Route => read<Route>(routeKey(id)) ?? [],
     deleteTrip(id: string): void {
-      dropTrip(id)
+      dropTripAll(id)
       garage.trips = garage.trips.filter((t) => t.id !== id)
       saveNow()
     },
@@ -193,12 +219,22 @@ export function useGarage() {
     },
     clearTrips(carId?: string): void {
       const gone = garage.trips.filter((t) => !carId || t.carId === carId || !t.carId)
-      for (const t of gone) dropTrip(t.id)
+      for (const t of gone) dropTripAll(t.id)
       garage.trips = garage.trips.filter((t) => !gone.includes(t))
       saveNow()
     },
     selectCar(id: string): void {
       if (garage.cars.some((c) => c.id === id)) garage.activeCarId = id
+    },
+    /** Нет ни одной настоящей машины — нужно показать приветствие и добавить первую. */
+    needsFirstCar: (): boolean => activeCar().placeholder === true,
+    /** Заполняет пустой профиль новичка данными из мастера (а не добавляет вторую машину). */
+    fillFirstCar(init: Partial<Car>): Car {
+      const c = activeCar()
+      Object.assign(c, init, { placeholder: false })
+      if (!c.name) c.name = [c.make, c.model].filter(Boolean).join(' ') || 'Моя машина'
+      saveNow()
+      return c
     },
     addCar(init: Partial<Car> = {}): Car {
       const c = newCar(init)
@@ -209,7 +245,7 @@ export function useGarage() {
     },
     removeCar(id: string): void {
       if (garage.cars.length <= 1) return
-      for (const t of garage.trips.filter((t) => t.carId === id)) dropTrip(t.id)
+      for (const t of garage.trips.filter((t) => t.carId === id)) dropTripAll(t.id)
       garage.trips = garage.trips.filter((t) => t.carId !== id)
       garage.cars = garage.cars.filter((c) => c.id !== id)
       if (garage.activeCarId === id) garage.activeCarId = garage.cars[0].id

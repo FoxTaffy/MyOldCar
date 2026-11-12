@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import DrawerMenu from '@/components/DrawerMenu.vue'
 import OnboardingWizard from '@/components/OnboardingWizard.vue'
+import WelcomeScreen from '@/components/WelcomeScreen.vue'
+import { useGarage } from '@/composables/useGarage'
+import { setBackLock } from '@/services/BackHandler'
+import { toast } from '@/composables/useToast'
 import { useUpdate } from '@/composables/useUpdate'
 import { drawerOpen, showWizard, useUi } from '@/composables/useUi'
 import { useVehicle } from '@/composables/useVehicle'
@@ -12,7 +16,16 @@ const v = useVehicle()
 const route = useRoute()
 const up = useUpdate()
 useUi()
-showWizard.value = !v.prefs.onboarded
+const garage = useGarage()
+/** Новичок: пустого профиля машины нет — сначала обязательно добавляем автомобиль. */
+const welcome = ref(garage.needsFirstCar())
+// Пока идёт приветствие, мастер подключения не показываем и «Назад» ничего не закрывает.
+showWizard.value = !v.prefs.onboarded && !welcome.value
+setBackLock(() => welcome.value || (showWizard.value && !v.prefs.onboarded))
+function welcomeDone(): void {
+  welcome.value = false
+  showWizard.value = !v.prefs.onboarded
+}
 const tabs = [
   { to: '/', label: 'Главная', icon: 'home' },
   { to: '/monitor', label: 'Монитор', icon: 'monitor' },
@@ -27,11 +40,11 @@ onMounted(() => { v.autoStart(); void up.check() })
 const viaText = { ble: 'Bluetooth', wifi: 'Wi-Fi', mock: 'Демо' } as const
 const pill = computed(() => {
   if (v.status.value === 'connecting') return { text: 'Подключение…', dot: 'bg-accent animate-pulse' }
-  if (v.status.value !== 'connected') return { text: 'Нет связи', dot: 'bg-faint' }
+  if (v.status.value !== 'connected') return v.awaitingManual.value ? { text: 'Подключить', dot: 'bg-warn' } : { text: 'Нет связи', dot: 'bg-faint' }
   if (v.ecuSilent.value) return { text: 'ЭБУ молчит', dot: 'bg-warn' }
   return { text: viaText[v.via.value ?? 'mock'], dot: 'bg-ok' }
 })
-const hint = computed(() => (v.status.value === 'connecting' ? v.note.value : v.ecuSilent.value ? 'Адаптер на связи, но ЭБУ не отвечает — включите зажигание.' : null))
+const hint = computed(() => (v.status.value === 'connecting' ? v.note.value : v.awaitingManual.value ? 'Адаптер не найден рядом. Поиск остановлен — нажмите «Подключить», когда будете у машины.' : v.ecuSilent.value ? 'Адаптер на связи, но ЭБУ не отвечает — включите зажигание.' : null))
 </script>
 
 <template>
@@ -64,6 +77,8 @@ const hint = computed(() => (v.status.value === 'connecting' ? v.note.value : v.
     </main>
 
     <DrawerMenu />
+    <Transition name="page"><div v-if="toast" class="pointer-events-none fixed inset-x-0 bottom-24 z-[3000] flex justify-center px-6"><span class="rounded-full bg-black/80 px-4 py-2 text-sm text-white shadow-card">{{ toast }}</span></div></Transition>
+    <WelcomeScreen v-if="welcome" @done="welcomeDone" />
     <OnboardingWizard v-if="showWizard" @done="showWizard = false" />
 
     <nav v-if="bar !== 'none'" class="mx-3 mb-2 grid shrink-0 grid-cols-5 rounded-3xl border border-night-600/70 bg-night-800/90 shadow-card backdrop-blur pb-[env(safe-area-inset-bottom)]" aria-label="Разделы">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { pushBack } from '@/services/BackHandler'
 import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { pickBleDevice } from '@/services/ELMService'
@@ -12,6 +13,8 @@ const { garage, car, setOil } = useGarage()
 
 /** Первый запуск — полный мастер; потом это же окно служит настройками (без шага про масло — оно на вкладке «Сервис»). */
 const firstRun = !prefs.onboarded
+// Не первый запуск: окно работает как настройки, «Назад» закрывает его.
+if (!firstRun) onBeforeUnmount(pushBack(() => { void finish() }))
 type Step = 'connect' | 'context' | 'oil' | 'done'
 const steps: Step[] = firstRun ? ['connect', 'context', 'oil', 'done'] : ['connect', 'context']
 const stepNames: Record<Step, string> = { connect: 'Подключение', context: 'Что делали', oil: 'Масло', done: 'Готово' }

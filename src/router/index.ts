@@ -14,6 +14,8 @@ export const router = createRouter({
     { path: '/dashboard', name: 'dashboard', component: () => import('@/views/DashboardView.vue'), meta: { bar: 'none', title: 'Приборная доска' } },
     { path: '/sensors', redirect: '/monitor' },
     { path: '/trip/:id', name: 'trip', component: () => import('@/views/TripView.vue'), meta: { bar: 'none', title: 'Поездка' } },
+    { path: '/routes', name: 'routes', component: () => import('@/views/RoutesMapView.vue'), meta: { bar: 'none', title: 'Карта поездок' } },
+    { path: '/wash', name: 'wash', component: () => import('@/views/WashView.vue'), meta: { bar: 'none', title: 'Умная мойка' } },
     { path: '/garage', name: 'garage', component: () => import('@/views/GarageView.vue'), meta: { bar: 'none', title: 'Автомобили' } },
     { path: '/performance', name: 'performance', component: () => import('@/views/PerformanceView.vue'), meta: { bar: 'none', title: 'Замер 0–100' } },
     { path: '/style', name: 'style', component: () => import('@/views/StyleView.vue'), meta: { bar: 'none', title: 'Стиль вождения' } },

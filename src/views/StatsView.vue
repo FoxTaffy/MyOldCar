@@ -72,6 +72,7 @@ function wipe(): void {
 <template>
   <section class="space-y-2">
     <Segmented :options="periods.map((x) => ({ id: x.k, label: x.l }))" :model-value="period" class="flex w-full [&>button]:flex-1" @update:model-value="period = $event as typeof period" />
+    <RouterLink to="/routes" class="btn-ghost block w-full text-center">Карта всех поездок: 7 дней · 30 дней · всё время</RouterLink>
     <p v-if="demoMode" class="rounded-xl bg-accent-soft p-2.5 text-center text-xs text-soft">Демо-режим: показаны симулированные поездки. В статистику машины и счётчик масла они не идут.</p>
 
     <div v-if="!trips.length" class="card p-4 text-sm muted">
