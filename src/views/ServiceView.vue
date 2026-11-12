@@ -54,21 +54,25 @@ const form = reactive({ name: '', date: todayISO(), since: 0, interval: 10000, m
 const editRow = computed(() => rows.value.find((r) => r.id === itemEdit.value))
 function openItem(id: string | 'new'): void {
   itemEdit.value = id
-  if (id === 'new') { Object.assign(form, { name: '', date: todayISO(), since: 0, interval: 10000, months: '' }); syncOdoFromSince(); return }
+  if (id === 'new') { Object.assign(form, { name: '', date: todayISO(), since: 0, interval: 10000, months: '' }); loadOdo(); return }
   const r = rows.value.find((x) => x.id === id)
   if (r) Object.assign(form, { name: r.name, date: r.dateISO ?? todayISO(), since: Math.round(r.sinceKm), interval: r.intervalKm, months: r.months && id !== 'oil' ? r.months : '' })
+  loadOdo()
+}
+// Одометр сейчас (записывается один раз) и при установке: «пройдено с замены» = сейчас − при установке
+const odoAt = ref<number | ''>('')
+const odoNow = ref<number | ''>('')
+const hasOdo = computed(() => typeof odoNow.value === 'number')
+function loadOdo(): void {
+  const o = currentOdometer(car())
+  odoNow.value = o != null ? Math.round(o) : ''
   syncOdoFromSince()
 }
-// Пробег при установке: связан с «Пройдено с замены» через текущий одометр
-const odoAt = ref<number | ''>('')
-const hasOdo = computed(() => currentOdometer(car()) != null)
 function syncOdoFromSince(): void {
-  const o = currentOdometer(car())
-  odoAt.value = o != null && typeof form.since === 'number' ? Math.max(0, Math.round(o - form.since)) : ''
+  odoAt.value = typeof odoNow.value === 'number' && typeof form.since === 'number' ? Math.max(0, Math.round(odoNow.value - form.since)) : ''
 }
 function syncSinceFromOdo(): void {
-  const o = currentOdometer(car())
-  if (o != null && typeof odoAt.value === 'number') form.since = Math.max(0, Math.round(o - odoAt.value))
+  if (typeof odoNow.value === 'number' && typeof odoAt.value === 'number') form.since = Math.max(0, Math.round(odoNow.value - odoAt.value))
 }
 const itemProblem = computed(() => {
   if (itemEdit.value === 'new' && !form.name.trim()) return 'Введите название'
@@ -80,6 +84,7 @@ const itemProblem = computed(() => {
 function saveItem(dateISO = form.date, since = form.since): void {
   const id = itemEdit.value
   if (!id || itemProblem.value) return
+  if (typeof odoNow.value === 'number' && odoNow.value !== Math.round(currentOdometer(car()) ?? -1)) setOdometer(car().id, odoNow.value)
   const months = typeof form.months === 'number' && form.months > 0 ? form.months : undefined
   if (id === 'new') {
     const it = addServiceItem(form.name, form.interval, months)
@@ -114,8 +119,8 @@ function saveCar(): void {
   save()
   showCar.value = false
 }
-const odoNow = computed(() => currentOdometer(car()))
-const ownedKm = computed(() => (odoNow.value != null && car().purchaseKm != null ? Math.max(0, odoNow.value - (car().purchaseKm as number)) : null))
+const odoEst = computed(() => currentOdometer(car()))
+const ownedKm = computed(() => (odoEst.value != null && car().purchaseKm != null ? Math.max(0, odoEst.value - (car().purchaseKm as number)) : null))
 const search = (q: string): void => { window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`, '_blank') }
 void garage
 void itemStatus
@@ -191,7 +196,7 @@ void itemStatus
     <!-- Пробег -->
     <h2 class="h-section">Пробег и владение</h2>
     <button class="card block w-full divide-y divide-night-600 text-left" @click="openCar">
-      <div class="row"><span class="row-title">Одометр (оценка)</span><span class="row-val">{{ odoNow != null ? int(odoNow) + ' км' : 'не задан' }}</span></div>
+      <div class="row"><span class="row-title">Одометр (оценка)</span><span class="row-val">{{ odoEst != null ? int(odoEst) + ' км' : 'не задан' }}</span></div>
       <div class="row"><span class="row-title">Дата начала владения</span><span class="row-val">{{ car().purchaseISO ? car().purchaseISO!.split('-').reverse().join('.') : '—' }}</span></div>
       <div class="row"><span class="row-title">Пробег при покупке</span><span class="row-val">{{ car().purchaseKm != null ? int(car().purchaseKm) + ' км' : '—' }}</span></div>
       <div class="row"><span class="row-title">Проехано за владение</span><span class="row-val">{{ ownedKm != null ? int(ownedKm) + ' км' : '—' }}</span></div>
@@ -207,11 +212,13 @@ void itemStatus
       <div class="card overflow-hidden">
         <label v-if="itemEdit === 'new'" class="row"><span class="row-title">Название</span><input v-model="form.name" class="min-w-0 flex-1 bg-transparent text-right text-sm outline-none placeholder:text-faint" placeholder="Например, шаровые"></label>
         <label class="row"><span class="row-title">Дата последней замены</span><input v-model="form.date" type="date" :max="todayISO()" class="bg-transparent text-right text-sm font-medium text-accent outline-none"></label>
+        <label class="row"><span class="row-title">Одометр сейчас, км</span><input v-model.number="odoNow" type="number" min="0" inputmode="numeric" class="w-28 bg-transparent text-right text-sm font-medium text-accent outline-none" placeholder="с приборки" @input="syncOdoFromSince"></label>
         <label v-if="hasOdo" class="row"><span class="row-title">Одометр при установке, км</span><input v-model.number="odoAt" type="number" min="0" inputmode="numeric" class="w-28 bg-transparent text-right text-sm font-medium text-accent outline-none" placeholder="с приборки" @input="syncSinceFromOdo"></label>
         <label class="row"><span class="row-title">Пройдено с замены, км</span><input v-model.number="form.since" type="number" min="0" inputmode="numeric" class="w-24 bg-transparent text-right text-sm font-medium text-accent outline-none" @input="syncOdoFromSince"></label>
         <label class="row"><span class="row-title">Интервал замены, км</span><input v-model.number="form.interval" type="number" min="500" step="500" inputmode="numeric" class="w-24 bg-transparent text-right text-sm font-medium text-accent outline-none"></label>
         <label v-if="itemEdit !== 'oil'" class="row"><span class="row-title">Срок, месяцев <span class="row-sub">необязательно</span></span><input v-model.number="form.months" type="number" min="1" inputmode="numeric" class="w-20 bg-transparent text-right text-sm font-medium text-accent outline-none" placeholder="—"></label>
       </div>
+      <p v-if="hasOdo && typeof odoAt === 'number' && typeof form.since === 'number'" class="mt-2 px-1 text-sm text-soft">Установлено на {{ int(odoAt) }} км, сейчас {{ int(odoNow as number) }} км — прошло <b class="tabular-nums text-accent">{{ int(form.since) }} км</b> из {{ int(form.interval || 0) }} км<template v-if="form.interval"> ({{ Math.round((form.since / form.interval) * 100) }}%)</template>.</p>
       <p class="mt-2 px-1 text-xs text-faint">Масло по сроку меняют раз в год независимо от пробега. Пробег по OBD недоступен: приложение прибавляет километры по поездкам — если ездили без него, поправьте вручную.</p>
       <p v-if="itemProblem" class="mt-2 px-1 text-sm text-bad">{{ itemProblem }}</p>
       <template #footer>
