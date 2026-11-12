@@ -19,7 +19,7 @@ const { ui, menu } = useUi()
 v.pollMode.value = 'normal'
 
 const stats = computed(() => ui.homeStats.slice(0, 3).map((id) => computeStat(id, since(30), car(), garage.fuelPrice, ui.currency)))
-const TONES = ['border-[#6d7be8]', 'border-[#25c2a0]', 'border-[#f5a02b]']
+const TONES = ['border-[#9b7bff]', 'border-[#4ecda0]', 'border-[#f4b84c]']
 
 /** Что пора обслужить: масло и позиции журнала, у которых выработано ≥ порога или вышел срок. */
 const due = computed(() => {
@@ -64,7 +64,7 @@ const go = (to: string): void => { void router.push(to) }
     </div>
 
     <!-- Живые показания или призыв подключиться -->
-    <button v-if="!v.isConnected.value && v.status.value !== 'connecting'" class="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-br from-[#14335f] to-[#0c2244] p-4 text-left text-white shadow-card active:opacity-90" @click="go('/connection')">
+    <button v-if="!v.isConnected.value && v.status.value !== 'connecting'" class="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-br from-[#3b2a8f] to-[#1c1450] border border-white/10 p-4 text-left text-white shadow-card active:opacity-90" @click="go('/connection')">
       <span class="min-w-0 flex-1"><span class="block text-xs text-white/70">Сначала нужно подключить сканер</span><span class="mt-0.5 block text-base font-bold">Перейти к подключению сканера ›</span></span>
       <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15"><AppIcon name="bluetooth" :size="28" /></span>
     </button>

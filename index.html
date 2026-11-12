@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
-    <meta name="theme-color" content="#eef3fa" />
+    <meta name="theme-color" content="#0b0b15" />
     <script>
       // Тема до первой отрисовки, чтобы не мигало: тёмная/светлая/как в системе.
       try {
-        var t = (JSON.parse(localStorage.getItem('myoldcar.ui.v1') || '{}').theme) || 'light'
+        var t = (JSON.parse(localStorage.getItem('myoldcar.ui.v1') || '{}').theme) || 'dark'
         var d = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.dataset.theme = d ? 'dark' : 'light'
       } catch (e) {}

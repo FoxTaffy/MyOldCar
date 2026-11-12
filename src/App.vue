@@ -39,7 +39,7 @@ const hint = computed(() => (v.status.value === 'connecting' ? v.note.value : v.
     <header v-if="bar !== 'none'" class="shrink-0 px-3 pb-1 pt-2">
       <div class="flex h-11 items-center gap-1">
         <button class="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-night-700" aria-label="Меню" @click="drawerOpen = true"><AppIcon name="menu" /></button>
-        <h1 v-if="bar === 'home'" class="flex-1 text-xl font-black tracking-[0.18em]"><span class="text-ink">MY</span><span class="text-accent">OLDCAR</span></h1>
+        <h1 v-if="bar === 'home'" class="flex-1 text-xl font-black tracking-[0.18em]"><span class="text-ink">MY</span><span class="bg-gradient-to-r from-accent-glow to-accent bg-clip-text text-transparent">OLDCAR</span></h1>
         <h1 v-else class="min-w-0 flex-1 truncate text-lg font-bold">{{ route.meta.title }}</h1>
         <RouterLink v-if="v.milOn.value" to="/diagnostics" class="mil h-9 w-9 text-lg" aria-label="Горит Check Engine — открыть ошибки">!</RouterLink>
         <RouterLink to="/connection" class="flex h-9 items-center gap-2 rounded-full border border-night-600 bg-night-800 px-3 text-xs font-semibold text-soft shadow-card active:bg-night-700" title="Подключение сканера">
@@ -66,8 +66,8 @@ const hint = computed(() => (v.status.value === 'connecting' ? v.note.value : v.
     <DrawerMenu />
     <OnboardingWizard v-if="showWizard" @done="showWizard = false" />
 
-    <nav v-if="bar !== 'none'" class="grid shrink-0 grid-cols-5 border-t border-night-600 bg-night-800 pb-[env(safe-area-inset-bottom)]" aria-label="Разделы">
-      <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="flex flex-col items-center gap-0.5 pb-2 pt-2.5 text-[11px] font-semibold transition-colors" :class="activeTab === t.to ? 'text-accent' : 'text-faint'">
+    <nav v-if="bar !== 'none'" class="mx-3 mb-2 grid shrink-0 grid-cols-5 rounded-3xl border border-night-600/70 bg-night-800/90 shadow-card backdrop-blur pb-[env(safe-area-inset-bottom)]" aria-label="Разделы">
+      <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="flex flex-col items-center gap-0.5 pb-2 pt-2.5 text-[11px] font-semibold transition-colors" :class="activeTab === t.to ? 'text-accent [&>svg]:drop-shadow-[0_0_8px_rgb(var(--accent)/0.7)]' : 'text-faint'">
         <AppIcon :name="t.icon" :size="24" />{{ t.label }}
       </RouterLink>
     </nav>
