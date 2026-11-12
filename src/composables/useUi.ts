@@ -50,7 +50,7 @@ interface Ui {
 
 function load(): Ui {
   const d: Ui = {
-    theme: 'light', fontStep: 0, animations: true, currency: '₽', speedLimit: 110, graphFill: true, zoneColors: true,
+    theme: 'dark', fontStep: 0, animations: true, currency: '₽', speedLimit: 110, graphFill: true, zoneColors: true,
     homeStats: ['avgKm', 'avgTime', 'lastDiag'], menuOrder: MENU.map((m) => m.id), menuHidden: [],
     monitor: ['speed', 'rpm', 'coolant', 'load', 'throttle', 'voltage'], warnPct: 80, hintJournal: false,
   }
@@ -75,7 +75,7 @@ export function applyTheme(): void {
   root.dataset.theme = dark ? 'dark' : 'light'
   root.style.setProperty('--font-scale', String(1 + ui.fontStep * 0.08))
   root.classList.toggle('no-anim', !ui.animations)
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#090b0f' : '#eef3fa')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0b0b15' : '#f3f1fc')
 }
 watch(() => [ui.theme, ui.fontStep, ui.animations], applyTheme, { immediate: true })
 mq?.addEventListener?.('change', applyTheme)

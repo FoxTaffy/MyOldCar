@@ -12,7 +12,7 @@ export default {
         accent: { DEFAULT: v('accent'), glow: v('accent-glow'), soft: v('accent-soft'), on: v('on-accent') },
         ok: v('ok'), warn: v('warn'), bad: v('bad'),
       },
-      boxShadow: { card: '0 1px 2px rgb(var(--shadow) / 0.06), 0 4px 14px rgb(var(--shadow) / 0.05)' },
+      boxShadow: { card: '0 1px 0 rgb(255 255 255 / 0.03) inset, 0 8px 24px rgb(var(--shadow) / 0.28)' },
       fontFamily: {
         sans: ['Roboto', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
         mono: ['Roboto', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],

@@ -4,17 +4,17 @@
 
 /* ---------- темы ---------- */
 :root, :root[data-theme='light'] {
-  --bg: 238 243 250; --inset: 245 248 252; --card: 255 255 255; --raised: 232 238 247; --line: 226 232 241;
-  --ink: 22 30 46; --soft: 58 70 92; --mute: 108 121 142; --faint: 150 160 177;
-  --accent: 16 170 245; --accent-glow: 0 137 214; --accent-soft: 224 244 254; --on-accent: 255 255 255;
-  --ok: 30 156 88; --warn: 212 134 12; --bad: 222 62 52; --shadow: 30 60 110;
+  --bg: 243 241 252; --inset: 248 246 254; --card: 255 255 255; --raised: 237 234 249; --line: 227 223 243;
+  --ink: 28 24 52; --soft: 66 60 98; --mute: 118 112 150; --faint: 160 155 187;
+  --accent: 112 78 235; --accent-glow: 88 56 210; --accent-soft: 236 231 255; --on-accent: 255 255 255;
+  --ok: 24 150 106; --warn: 205 128 10; --bad: 224 64 80; --shadow: 70 50 140;
   color-scheme: light;
 }
 :root[data-theme='dark'] {
-  --bg: 9 11 15; --inset: 13 16 21; --card: 20 25 33; --raised: 29 36 47; --line: 40 49 62;
-  --ink: 224 229 237; --soft: 176 185 198; --mute: 128 139 155; --faint: 96 106 121;
-  --accent: 46 170 240; --accent-glow: 110 195 250; --accent-soft: 18 52 74; --on-accent: 6 14 22;
-  --ok: 95 174 122; --warn: 214 162 63; --bad: 232 100 88; --shadow: 0 0 0;
+  --bg: 11 11 21; --inset: 15 15 28; --card: 23 23 40; --raised: 35 35 58; --line: 47 47 74;
+  --ink: 237 236 249; --soft: 190 188 213; --mute: 144 142 172; --faint: 105 103 135;
+  --accent: 152 124 255; --accent-glow: 180 160 255; --accent-soft: 40 33 78; --on-accent: 14 10 32;
+  --ok: 78 205 160; --warn: 244 184 76; --bad: 255 104 120; --shadow: 0 0 0;
   color-scheme: dark;
 }
 
@@ -22,6 +22,8 @@ html, body, #app { height: 100%; }
 html { font-size: calc(16px * var(--font-scale, 1)); }
 body {
   @apply bg-night-950 font-sans text-ink antialiased;
+  background-image: radial-gradient(120% 60% at 50% -10%, rgb(var(--accent) / 0.16), transparent 60%);
+  background-attachment: fixed;
   padding-top: env(safe-area-inset-top);
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
@@ -35,17 +37,20 @@ button, a, summary { touch-action: manipulation; }
 .no-anim *, .no-anim *::before, .no-anim *::after { transition: none !important; animation: none !important; }
 
 /* ---------- компоненты ---------- */
-.card { @apply rounded-2xl border border-night-600 bg-night-800 shadow-card; }
+.card { @apply rounded-3xl border border-night-600/70 bg-night-800 shadow-card; background-image: linear-gradient(160deg, rgb(255 255 255 / 0.04), transparent 55%); }
 .label { @apply text-xs font-medium text-mute; }
 .muted { @apply text-mute; }
 .h-section { @apply px-1 pb-2 pt-4 text-lg font-bold text-ink; }
-.btn { @apply rounded-xl bg-accent px-4 py-3 text-base font-semibold text-accent-on shadow-sm transition active:scale-[0.98] active:bg-accent-glow disabled:opacity-40 disabled:active:scale-100; }
-.btn-ghost { @apply rounded-xl border border-night-600 bg-night-800 px-4 py-3 text-base font-semibold text-soft transition active:scale-[0.98] active:bg-night-700 disabled:opacity-40 disabled:active:scale-100; }
-.btn-soft { @apply rounded-xl bg-accent-soft px-4 py-3 text-base font-semibold text-accent transition active:scale-[0.98] disabled:opacity-40; }
+.btn { @apply rounded-2xl bg-accent px-4 py-3 text-base font-semibold text-accent-on transition; background-image: linear-gradient(135deg, rgb(var(--accent-glow)), rgb(var(--accent))); box-shadow: 0 6px 18px rgb(var(--accent) / 0.35); }
+.btn:active { @apply scale-[0.98]; }
+.btn:disabled { @apply opacity-40; box-shadow: none; }
+.btn:disabled:active { @apply scale-100; }
+.btn-ghost { @apply rounded-2xl border border-night-600 bg-night-800 px-4 py-3 text-base font-semibold text-soft transition active:scale-[0.98] active:bg-night-700 disabled:opacity-40 disabled:active:scale-100; }
+.btn-soft { @apply rounded-2xl bg-accent-soft px-4 py-3 text-base font-semibold text-accent transition active:scale-[0.98] disabled:opacity-40; }
 /* Компактный вариант кнопок — для шапки и строк списков. */
 .btn-sm { @apply !rounded-lg !px-3 !py-2 !text-sm; }
 .link { @apply text-xs text-mute underline underline-offset-2 active:text-ink; }
-.field { @apply w-full rounded-xl border border-night-600 bg-night-900 px-3 py-2.5 text-ink placeholder:text-faint focus:border-accent focus:outline-none; }
+.field { @apply w-full rounded-2xl border border-night-600 bg-night-900 px-3 py-2.5 text-ink placeholder:text-faint focus:border-accent focus:outline-none; }
 select.field { @apply appearance-none bg-no-repeat pr-8; background-image: linear-gradient(45deg, transparent 50%, rgb(var(--mute)) 50%), linear-gradient(135deg, rgb(var(--mute)) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; }
 /* Значок Check Engine: красная рамка с восклицательным знаком. */
 .mil { @apply flex shrink-0 items-center justify-center rounded-lg border-2 border-bad font-bold text-bad; }
@@ -55,7 +60,7 @@ select.field { @apply appearance-none bg-no-repeat pr-8; background-image: linea
 .rows dt { @apply text-mute; }
 .rows dd { @apply text-right font-medium tabular-nums; }
 /* Сетка плиток с тонкими разделителями. */
-.tiles { @apply grid gap-px overflow-hidden rounded-2xl border border-night-600 bg-night-600; }
+.tiles { @apply grid gap-px overflow-hidden rounded-3xl border border-night-600 bg-night-600; }
 .tiles > div { @apply bg-night-800 p-3; }
 .tile-value { @apply text-2xl font-semibold tabular-nums; }
 .tile-unit { @apply text-xs font-normal text-mute; }
@@ -68,9 +73,9 @@ select.field { @apply appearance-none bg-no-repeat pr-8; background-image: linea
 /* Переключатель. */
 .switch { @apply relative h-7 w-12 shrink-0 rounded-full bg-night-700 transition-colors; }
 .switch::after { content: ''; @apply absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform; }
-.switch[aria-checked='true'] { @apply bg-accent; }
+.switch[aria-checked='true'] { @apply bg-accent; box-shadow: 0 0 12px rgb(var(--accent) / 0.45); }
 .switch[aria-checked='true']::after { transform: translateX(1.25rem); }
-.chip { @apply shrink-0 rounded-full border border-night-600 bg-night-800 px-3.5 py-1.5 text-sm font-medium text-soft; }
-.chip[aria-pressed='true'], .chip.on { @apply border-transparent bg-accent text-accent-on; }
+.chip { @apply shrink-0 rounded-full border border-night-600 bg-night-700/60 px-3.5 py-1.5 text-sm font-medium text-soft; }
+.chip[aria-pressed='true'], .chip.on { @apply border-transparent bg-accent text-accent-on; box-shadow: 0 4px 14px rgb(var(--accent) / 0.35); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
