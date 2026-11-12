@@ -1,5 +1,5 @@
 import matrixJson from '@/data/dtcMatrix.json'
-import { describeDtc } from '@/data/dtcDictionary'
+import { describeDtc, dtcAdvice } from '@/data/dtcDictionary'
 import type { AppSettings, CauseResult, DiagnosisResult, SensorSnapshot } from '@/types'
 
 /* ---------- Формат JSON-матрицы ---------- */
@@ -124,16 +124,17 @@ export function diagnose(
   const code = normalizeCode(rawCode)
   const entry = matrix[code]
   if (!entry) {
-    // Вероятностной модели нет, но расшифровку (что за система и что означает код) даём всегда.
+    // Вероятностной модели нет, но расшифровку и подсказку «с чего начать» даём всегда.
     const info = describeDtc(code)
     return {
       code,
       title: info.title,
+      modeled: false,
       causes: [{
-        id: 'unknown', title: info.known ? 'Расшифровка без оценки причин' : 'Код не найден в справочнике', probability: 100,
-        recommendation: info.known
-          ? `Система: ${info.system}. Для этого кода нет вероятностной модели — проверь цепь указанного узла (разъём, проводка, питание/масса), затем сам узел. После ремонта смотри, возвращается ли код.`
-          : `Система: ${info.system}. ${info.kind === 'manufacturer' ? 'Заводской код — смотри документацию на конкретный блок (Bosch M7.9.7 / Январь).' : 'Универсальный код — уточни расшифровку по SAE J2012.'}`,
+        id: 'unknown',
+        title: info.known ? 'С чего начать проверку' : 'Код не найден в справочнике',
+        probability: 100,
+        recommendation: dtcAdvice(code),
       }],
       notes: [],
     }
@@ -158,5 +159,5 @@ export function diagnose(
     .map((s, i) => ({ id: s.def.id, title: s.def.title, probability: pcts[i], recommendation: s.def.recommendation }))
     .sort((a, b) => b.probability - a.probability)
 
-  return { code, title: entry.title, causes, notes }
+  return { code, title: entry.title, modeled: true, causes, notes }
 }

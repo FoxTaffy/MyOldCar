@@ -15,6 +15,8 @@ const GPS_NOISE_KMH = 2
 const GPS_MAX_KMH = 250
 /** Точность GPS хуже — точку не используем. */
 const GPS_MAX_ACCURACY_M = 60
+/** OBD показывает 0, а GPS — уверенное движение: датчик скорости не работает (или машину везут), верим GPS. */
+const GPS_OVERRIDE_KMH = 10
 const MAX_POINTS = 1200
 
 export interface GpsFix {
@@ -51,6 +53,8 @@ export class TripSession {
   private sources = new Set<'obd' | 'gps'>()
   /** Кто-то должен считать коды при загорании лампы. */
   onMil?: (ev: TripEvent) => void
+  /** Демо-режим: новые поездки помечаются как демонстрационные. */
+  demo = false
 
   constructor(private carId?: string) {}
 
@@ -74,8 +78,8 @@ export class TripSession {
   feedGps(now: number, fix: GpsFix): number {
     if (fix.accuracy > GPS_MAX_ACCURACY_M) return 0
     const prev = this.gps
-    // Точка старее уже учтённых данных (опоздала) — пропускаем.
-    if (now < this.lastAt || (prev && now <= prev.at)) return 0
+    // Точки GPS идут строго по времени: повтор или более старая точка не нужны.
+    if (prev && now <= prev.at) return 0
     // Смещение с прошлой точки. В фоне и по сети точки приходят редко (раз в 10–60 с) и часто без скорости —
     // тогда скорость и пробег считаем по координатам, иначе такая поездка не записалась бы вовсе.
     let gapKm: number | null = null
@@ -91,7 +95,33 @@ export class TripSession {
       }
     }
     this.gps = { fix, at: now }
-    return this.step(now, gapKm)
+    if (now >= this.lastAt) return this.step(now, gapKm)
+    // Точка опоздала: OBD уже прислал более свежие данные (обычное дело, когда приложение проснулось и дочитывает журнал GPS).
+    return this.late(now, fix, prev?.at ?? now, gapKm)
+  }
+
+  /**
+   * Опоздавшая точка GPS. Время поездки она не двигает, но если приложение в этот промежуток спало,
+   * её пробег закрывает пропуск, а координаты попадают в трек на своё место.
+   */
+  private late(now: number, fix: GpsFix, from: number, gapKm: number | null): number {
+    if (!this.rec.current || gapKm == null) return 0
+    const km = this.rec.fillHole(from, now, gapKm)
+    if (km > 0) this.lastActivity = Math.max(this.lastActivity, now)
+    let i = this.points.length
+    while (i > 0 && this.points[i - 1].t > now) i--
+    const before = this.points[i - 1]
+    const after = this.points[i]
+    // В трек — только если рядом по времени нет точки (то есть это действительно пропуск).
+    if ((!before || now - before.t >= this.minIntervalMs) && (!after || after.t - now >= this.minIntervalMs)) {
+      this.points.splice(i, 0, {
+        t: now, lat: round(fix.lat, 6), lon: round(fix.lon, 6), spd: fix.speedKmh != null ? round(fix.speedKmh, 1) : null,
+        rpm: null, ect: null, maf: null, load: null, thr: null, volt: null, mil: before?.mil ?? false, l100: null,
+      })
+      this.sources.add('gps')
+      if (this.points.length > MAX_POINTS) this.decimate()
+    }
+    return km
   }
 
   private obdNow(now: number): SensorSnapshot | null {
@@ -106,10 +136,11 @@ export class TripSession {
     const obd = this.obdNow(now)
     const gps = this.gpsNow(now)
     const gpsSpeed = gps?.speedKmh != null ? (gps.speedKmh < GPS_NOISE_KMH ? 0 : gps.speedKmh) : null
-    const speed = obd?.speedKmh ?? gpsSpeed
+    const obdSpeed = obd?.speedKmh ?? null
+    const speed = obdSpeed != null && !(obdSpeed === 0 && (gpsSpeed ?? 0) >= GPS_OVERRIDE_KMH) ? obdSpeed : gpsSpeed
     const engineOn = (obd?.rpm ?? 0) > 0
-    const active = engineOn || (obd?.speedKmh ?? 0) > 0 || (gpsSpeed ?? 0) > 0
-    if (active) this.lastActivity = now
+    const active = engineOn || (obdSpeed ?? 0) > 0 || (gpsSpeed ?? 0) > 0
+    if (active) this.lastActivity = Math.max(this.lastActivity, now)
 
     if (!this.rec.current) {
       if (!active) return 0
@@ -125,7 +156,7 @@ export class TripSession {
   }
 
   private start(now: number): void {
-    this.rec.begin(now, this.carId)
+    this.rec.begin(now, this.carId, this.demo)
     this.points = []
     this.sources.clear()
     this.lastPointAt = 0

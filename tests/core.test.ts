@@ -63,7 +63,7 @@ describe('PerformanceTimer', () => {
   })
   it('пробуксовка: RPM растёт, скорость стоит', () => {
     const t = new PerformanceTimer()
-    t.feed(0, 10, 3000); t.feed(300, 10, 3400); t.feed(600, 10, 4000); t.feed(900, 100, 4000)
+    t.feed(-100, 0, 900); t.feed(0, 10, 3000); t.feed(300, 10, 3400); t.feed(600, 10, 4000); t.feed(900, 100, 4000)
     expect(t.result!.warnings).toContain('Возможна пробуксовка сцепления')
   })
 })

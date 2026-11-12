@@ -53,7 +53,10 @@ const snapshot = ref<SensorSnapshot | null>(null)
 /** normal — полный цикл PID; fast — только скорость+обороты; off — опрос на паузе. */
 const pollMode = ref<'normal' | 'fast' | 'off'>('normal')
 /** Данные текущей поездки (для реактивного показа). */
-const tripLive = ref({ distanceKm: 0, fuelL: 0, movingMs: 0, stoppedMs: 0, maxSpeedKmh: 0 })
+const NO_TRIP = { start: 0, distanceKm: 0, fuelL: 0, movingMs: 0, stoppedMs: 0, maxSpeedKmh: 0 }
+const tripLive = ref({ ...NO_TRIP })
+/** Название протокола обмена с ЭБУ текущего подключения. */
+const protocolName = ref<string | null>(null)
 
 const garage = useGarage()
 const session = new TripSession(garage.car().id)
@@ -68,8 +71,13 @@ const tripActive = ref(false)
 const IDLE_CHECK_MS = 30_000
 
 let elm: ELMService | null = null
+/** Сервис, который сейчас пытается подключиться (чтобы попытку можно было отменить). */
+let connecting: ELMService | null = null
+let connectToken = 0
 let loopToken = 0
 let manualStop = false
+/** Текст в error — от цикла опроса (его снимаем сами, когда опрос снова пошёл). */
+let pollError = false
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
 const RECONNECT_MS = 6000
@@ -90,9 +98,11 @@ async function pollLoop(token: number, service: ELMService): Promise<void> {
       }
       let snap: SensorSnapshot
       if (pollMode.value === 'fast') {
+        // Замер разгона: скорость и обороты — каждый цикл, ДМРВ — раз в три (нужен, чтобы расход поездки не терялся).
         const rpm = await service.readRpm()
         const speedKmh = await service.readSpeed()
-        snap = { ...(snapshot.value ?? { coolantTempC: null, mafGs: null }), rpm, speedKmh, timestamp: Date.now() }
+        const mafGs = cycle++ % 3 === 0 ? await service.readMaf() : snapshot.value?.mafGs ?? null
+        snap = { ...(snapshot.value ?? { coolantTempC: null }), rpm, speedKmh, mafGs, timestamp: Date.now() }
       } else {
         const core = await service.readSnapshot(false)
         // Редкие PID читаем раз в несколько циклов, между ними показываем последние значения.
@@ -101,9 +111,12 @@ async function pollLoop(token: number, service: ELMService): Promise<void> {
       }
       if (token !== loopToken) return
       errors = 0
+      if (pollError) { pollError = false; error.value = null }
       snapshot.value = snap
       trackTrip(snap)
     } catch (e) {
+      if (token !== loopToken) return
+      pollError = true
       error.value = e instanceof Error ? e.message : String(e)
       if (++errors >= MAX_ERRORS && token === loopToken) {
         handleLost('Связь с адаптером потеряна')
@@ -118,14 +131,19 @@ function refreshTripLive(): void {
   const t = session.trip
   tripActive.value = t != null
   tripLive.value = t
-    ? { distanceKm: t.distanceKm, fuelL: t.fuelL, movingMs: t.movingMs, stoppedMs: t.stoppedMs, maxSpeedKmh: t.maxSpeedKmh }
-    : { distanceKm: 0, fuelL: 0, movingMs: 0, stoppedMs: 0, maxSpeedKmh: 0 }
+    ? { start: t.start, distanceKm: t.distanceKm, fuelL: t.fuelL, movingMs: t.movingMs, stoppedMs: t.stoppedMs, maxSpeedKmh: t.maxSpeedKmh }
+    : { ...NO_TRIP }
   garage.saveActive(t, session.points)
+}
+
+/** Пробег идёт в счётчик машины (масло, одометр) — кроме демо: симулятор не должен «накручивать» реальную машину. */
+function addDistance(km: number): void {
+  if (!session.demo) garage.addDistance(km)
 }
 
 function trackTrip(s: SensorSnapshot): void {
   milOn.value = s.milOn === true
-  garage.addDistance(session.feedObd(s.timestamp, s))
+  addDistance(session.feedObd(s.timestamp, s))
   refreshTripLive()
   if (via.value === 'mock') mockGps(s)
 }
@@ -156,7 +174,7 @@ session.onMil = (ev) => {
 
 gps.onFix = (fix) => {
   gpsFix.value = fix
-  garage.addDistance(session.feedGps(fix.t, fix))
+  addDistance(session.feedGps(fix.t, fix))
   refreshTripLive()
 }
 gps.onState = (st, msg) => { gpsState.value = st; gpsError.value = msg ?? null }
@@ -176,9 +194,23 @@ function mockGps(s: SensorSnapshot): void {
   gps.push(mock.lat, mock.lon, speed / 3.6, 5, mock.bearing)
 }
 
+const wantGps = (): boolean => prefs.backgroundTracking && prefs.mode !== 'mock' && prefs.onboarded
+
 function startGps(): void {
-  if (prefs.backgroundTracking && prefs.mode !== 'mock' && prefs.onboarded) void gps.start()
+  if (wantGps()) void gps.start()
 }
+
+// Настройки изменили (выключили фоновую запись, перешли в демо) — GPS должен остановиться, а не работать до перезапуска.
+watch(wantGps, (want) => {
+  if (want) void gps.start()
+  else void gps.stop()
+})
+
+// Сменили активную машину: текущая поездка закрывается на прежней машине, новая начнётся уже на выбранной.
+watch(() => garage.garage.activeCarId, (id) => {
+  if (session.active) endTrip()
+  session.setCar(id)
+})
 
 /* ---------- подключение ---------- */
 
@@ -190,14 +222,17 @@ function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 }
 
 async function tryKind(kind: ConnectionKind): Promise<ELMService> {
-  const svc = createElmService({ kind, host: prefs.host, port: prefs.port, bleId: prefs.bleId, protocol: prefs.protocol })
+  const svc = createElmService({ kind, host: prefs.host.trim(), port: prefs.port, bleId: prefs.bleId, protocol: prefs.protocol })
   svc.onProgress = (m) => { note.value = m }
+  connecting = svc
   try {
     await withTimeout(svc.connect(), 150000, kind === 'ble' ? 'Bluetooth: адаптер не отвечает' : 'Wi-Fi: адаптер не отвечает')
     return svc
   } catch (e) {
     await svc.disconnect().catch(() => undefined)
     throw e
+  } finally {
+    if (connecting === svc) connecting = null
   }
 }
 
@@ -233,6 +268,7 @@ function handleLost(msg: string): void {
   via.value = null
   snapshot.value = null
   milOn.value = false
+  pollError = false
   error.value = msg
   scheduleReconnect()
 }
@@ -241,22 +277,34 @@ async function connect(auto = false): Promise<void> {
   if (status.value !== 'disconnected') return
   if (!auto) manualStop = false
   clearReconnect()
+  const token = ++connectToken
   status.value = 'connecting'
   error.value = null
+  pollError = false
   const errors: string[] = []
   for (const kind of plan()) {
     try {
       const svc = await tryKind(kind)
+      if (token !== connectToken) {
+        // Пока подключались, пользователь нажал «Отмена».
+        await svc.disconnect().catch(() => undefined)
+        return
+      }
       elm = svc
       if (svc.protocol && kind !== 'mock') prefs.protocol = svc.protocol
+      protocolName.value = kind === 'mock' ? 'демо' : svc.protocolName
       note.value = null
       via.value = kind
       status.value = 'connected'
+      // Реальная поездка (по GPS) не должна продолжиться как демо и наоборот.
+      if (session.active && session.demo !== (kind === 'mock')) endTrip()
+      session.demo = kind === 'mock'
       session.setCar(garage.car().id)
       svc.onLost = () => handleLost('Адаптер отключился')
       void pollLoop(++loopToken, svc)
       return
     } catch (e) {
+      if (token !== connectToken) return
       errors.push(`${kind === 'ble' ? 'Bluetooth' : kind === 'wifi' ? 'Wi-Fi' : 'Демо'}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
@@ -266,19 +314,28 @@ async function connect(auto = false): Promise<void> {
   scheduleReconnect()
 }
 
+/** Отключиться или отменить идущую попытку подключения. */
 async function disconnect(): Promise<void> {
   manualStop = true
   clearReconnect()
   loopToken++
+  connectToken++
   const old = elm
+  const pending = connecting
   elm = null
+  connecting = null
   const wasMock = via.value === 'mock'
-  await old?.disconnect().catch(() => undefined)
-  if (wasMock) endTrip() // демо-поездка заканчивается вместе с демо-подключением
   status.value = 'disconnected'
   via.value = null
+  note.value = null
   snapshot.value = null
   milOn.value = false
+  if (pollError) { pollError = false; error.value = null }
+  if (wasMock) {
+    endTrip() // демо-поездка заканчивается вместе с демо-подключением
+    session.demo = false
+  }
+  await Promise.all([old?.disconnect().catch(() => undefined), pending?.disconnect().catch(() => undefined)])
 }
 
 /** Вызывать один раз при старте приложения. */
@@ -297,11 +354,19 @@ function autoStart(): void {
   }
 }
 
+const ecuSilent = computed(() => {
+  const s = snapshot.value
+  return status.value === 'connected' && s != null && s.rpm == null && s.speedKmh == null && s.coolantTempC == null
+})
+
 export function useVehicle() {
   return {
-    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, gpsState, gpsFix, gpsError, milOn, tripActive,
+    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, gpsState, gpsFix, gpsError, milOn, tripActive, protocolName,
     session,
     isConnected: computed(() => status.value === 'connected'),
+    /** Адаптер на связи, но ЭБУ не отдаёт ни один основной параметр (обычно выключено зажигание). */
+    ecuSilent,
+    clearError: () => { error.value = null; pollError = false },
     connect: () => connect(false),
     disconnect, autoStart, startGps, endTrip,
     stopGps: () => gps.stop(),

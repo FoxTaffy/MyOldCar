@@ -77,13 +77,19 @@ export class GpsService {
               this.set(err.code === 'NOT_AUTHORIZED' ? 'denied' : 'error', err.message)
               return
             }
-            if (pos) this.push(pos.latitude, pos.longitude, pos.speed, pos.accuracy, pos.bearing, pos.time)
+            if (!pos) return
+            if (this.state === 'error') this.set('on')
+            this.push(pos.latitude, pos.longitude, pos.speed, pos.accuracy, pos.bearing, pos.time)
           },
         )
         this.set('on')
       } else if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
         this.webWatch = navigator.geolocation.watchPosition(
-          (p) => this.push(p.coords.latitude, p.coords.longitude, p.coords.speed, p.coords.accuracy, p.coords.heading, p.timestamp),
+          (p) => {
+            // После временной ошибки (нет сигнала) точки пошли снова — состояние должно вернуться в «работает».
+            if (this.state !== 'on') this.set('on')
+            this.push(p.coords.latitude, p.coords.longitude, p.coords.speed, p.coords.accuracy, p.coords.heading, p.timestamp)
+          },
           (e) => this.set(e.code === 1 ? 'denied' : 'error', e.message),
           { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
         )
@@ -102,6 +108,7 @@ export class GpsService {
   }
 
   async stop(): Promise<void> {
+    if (this.state === 'off') return
     if (Capacitor.isNativePlatform()) await BackgroundGeolocation.stop().catch(() => undefined)
     if (this.webWatch != null) navigator.geolocation.clearWatch(this.webWatch)
     this.webWatch = null

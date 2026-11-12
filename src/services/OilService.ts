@@ -20,23 +20,32 @@ export interface OilStatus {
   pct: number
   level: Level
   daysSince: number | null
+  /** Масло пора менять по сроку (прошёл год), даже если пробег ещё не вышел. */
+  overdueByTime: boolean
 }
+
+/** Масло стареет и без пробега: раз в год его меняют независимо от километража. */
+export const OIL_MAX_DAYS = 365
+const OIL_WARN_DAYS = 330
 
 /**
  * Пробег с замены = введённый вручную пробег + то, что приложение намеряло по скорости
  * после ввода. По OBD одометр недоступен, поэтому считаем сами и поправляем вручную.
  */
 export function oilStatus(o: OilState, trackedTotalKm: number, now = new Date()): OilStatus {
-  if (!o.dateISO) return { configured: false, sinceKm: 0, leftKm: o.intervalKm, pct: 0, level: 'ok', daysSince: null }
+  if (!o.dateISO) return { configured: false, sinceKm: 0, leftKm: o.intervalKm, pct: 0, level: 'ok', daysSince: null, overdueByTime: false }
   const sinceKm = Math.max(0, o.offsetKm + trackedTotalKm - o.trackedAtSet)
   const pct = (sinceKm / o.intervalKm) * 100
-  const days = Math.floor((now.getTime() - new Date(o.dateISO + 'T00:00:00').getTime()) / 86400000)
+  const raw = Math.floor((now.getTime() - new Date(o.dateISO + 'T00:00:00').getTime()) / 86400000)
+  const days = Number.isFinite(raw) ? Math.max(0, raw) : null
+  const overdueByTime = days != null && days >= OIL_MAX_DAYS
   return {
     configured: true,
     sinceKm,
     leftKm: o.intervalKm - sinceKm,
     pct,
-    level: pct >= 100 ? 'bad' : pct >= 80 ? 'warn' : 'ok',
-    daysSince: Number.isFinite(days) ? Math.max(0, days) : null,
+    level: pct >= 100 || overdueByTime ? 'bad' : pct >= 80 || (days != null && days >= OIL_WARN_DAYS) ? 'warn' : 'ok',
+    daysSince: days,
+    overdueByTime,
   }
 }

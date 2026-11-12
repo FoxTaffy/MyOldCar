@@ -59,6 +59,8 @@ export interface DiagnosisResult {
   /** confirmed — сохранённая (режим 03), pending — временная (режим 07). */
   status?: 'confirmed' | 'pending'
   title: string
+  /** Есть ли для кода вероятностная модель причин (иначе в causes — одна общая подсказка). */
+  modeled: boolean
   causes: CauseResult[]
   /** Какие правила сработали — для прозрачности «ИИ». */
   notes: string[]
