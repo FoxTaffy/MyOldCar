@@ -1,10 +1,15 @@
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { Capacitor } from '@capacitor/core'
 import { createElmService, type ELMService } from '@/services/ELMService'
 import { GpsService, type GpsState } from '@/services/GpsService'
 import { TripSession, type GpsFix } from '@/services/TripSession'
 import { destinationPoint } from '@/services/TripAnalysis'
-import { ensureNotifyPermission, notify } from '@/services/Notifier'
+import { ensureNotifyPermission, notify } from '@/services/ReadyNotifier'
+import { useSensors } from '@/composables/useSensors'
+import { compileFormula, type Formula } from '@/services/Formula'
+import type { EcuStatus } from '@/services/EcuStatus'
+import { Notifier } from '@/services/Notifier'
+import type { SensorDef } from '@/data/sensors'
 import { WarmupTracker, type WarmupInfo } from '@/services/WarmupTracker'
 import { useGarage } from '@/composables/useGarage'
 import { DEFAULT_SETTINGS, type AppSettings, type ConnectionKind, type ConnectionMode, type SensorSnapshot } from '@/types'
@@ -61,7 +66,23 @@ const tripLive = ref({ ...NO_TRIP })
 const protocolName = ref<string | null>(null)
 
 const garage = useGarage()
-const session = new TripSession(garage.car().id)
+const sensors = useSensors()
+const session = new TripSession(garage.car().id, () => sensors.allDefs.value)
+const notifier = new Notifier()
+/** Значения всех датчиков по id (ядро из снимка + PID-датчики), обновляются каждый цикл. */
+const values = shallowRef<Record<string, number | null>>({})
+/** Последние ~90 точек каждого датчика для мини-графиков. */
+const history = shallowRef<Record<string, number[]>>({})
+/** Время подключения к машине (для «работает с …»). */
+const connectedAt = ref<number | null>(null)
+/** Статус ЭБУ (лампа, коды, тесты, режим топливоподачи); обновляется редко. */
+const ecuStatus = ref<EcuStatus | null>(null)
+const HISTORY_LEN = 90
+const EXTRA_PER_CYCLE = 3
+const STATUS_EVERY = 30
+const extras: Record<string, number | null> = {}
+const formulas = new Map<string, { src: string; fn: Formula | null }>()
+let extraCursor = 0
 const gps = new GpsService()
 const gpsState = ref<GpsState>('off')
 const gpsFix = ref<GpsFix | null>(null)
@@ -115,13 +136,16 @@ async function pollLoop(token: number, service: ELMService): Promise<void> {
       } else {
         const core = await service.readSnapshot(false)
         // Редкие PID читаем раз в несколько циклов, между ними показываем последние значения.
-        if (cycle++ % EXTENDED_EVERY === 0) ext = await service.readExtended()
+        if (cycle % EXTENDED_EVERY === 0) ext = await service.readExtended()
+        if (cycle % STATUS_EVERY === 0) ecuStatus.value = await service.readStatus()
+        cycle++
         snap = { ...core, ...ext }
       }
       if (token !== loopToken) return
       errors = 0
       if (pollError) { pollError = false; error.value = null }
       snapshot.value = snap
+      if (pollMode.value === 'normal') await pollExtras(service)
       trackTrip(snap)
     } catch (e) {
       if (token !== loopToken) return
@@ -134,6 +158,35 @@ async function pollLoop(token: number, service: ELMService): Promise<void> {
       await new Promise((r) => setTimeout(r, 400))
     }
   }
+}
+
+/** Опрос PID-датчиков из каталога (встроенных и импортированных) по несколько штук за цикл. */
+async function pollExtras(service: ELMService): Promise<void> {
+  const defs = sensors.allDefs.value.filter((d) => d.pid && d.formula)
+  if (!defs.length) return
+  for (let k = 0; k < Math.min(EXTRA_PER_CYCLE, defs.length); k++) {
+    const def = defs[extraCursor++ % defs.length]
+    let f = formulas.get(def.id)
+    if (!f || f.src !== def.formula) {
+      let fn: Formula | null = null
+      try { fn = compileFormula(def.formula!) } catch { /* битая формула — датчик молчит */ }
+      f = { src: def.formula!, fn }
+      formulas.set(def.id, f)
+    }
+    if (!f.fn) { extras[def.id] = null; continue }
+    const bytes = await service.readPidBytes(def.pid!)
+    const v = bytes && bytes.length ? f.fn(bytes) : NaN
+    extras[def.id] = Number.isNaN(v) ? null : v
+  }
+}
+
+function buildValues(s: SensorSnapshot, defs: SensorDef[]): Record<string, number | null> {
+  const out: Record<string, number | null> = {}
+  for (const d of defs) {
+    if (d.field) out[d.id] = (s[d.field] as number | null | undefined) ?? null
+    else out[d.id] = extras[d.id] ?? null
+  }
+  return out
 }
 
 function refreshTripLive(): void {
@@ -153,12 +206,32 @@ function addDistance(km: number): void {
 function trackTrip(s: SensorSnapshot): void {
   milOn.value = s.milOn === true
   warmupInfo.value = warmup.feed(s.timestamp, s.coolantTempC, s.rpm)
-  addDistance(session.feedObd(s.timestamp, s))
+  const vals = buildValues(s, sensors.allDefs.value)
+  values.value = vals
+  const h = { ...history.value }
+  for (const [id, v] of Object.entries(vals)) {
+    if (v == null) continue
+    const arr = (h[id] ?? []).concat(v)
+    if (arr.length > HISTORY_LEN) arr.shift()
+    h[id] = arr
+  }
+  history.value = h
+  addDistance(session.feedObd(s.timestamp, s, vals))
   refreshTripLive()
   if (via.value === 'mock') mockGps(s)
 }
 
 /** Завершает поездку и сохраняет её (вместе с треком). */
+/** Сбрасывает показания датчиков при отключении (поездка при этом не трогается). */
+function clearReadings(): void {
+  history.value = {}
+  values.value = {}
+  ecuStatus.value = null
+  for (const k of Object.keys(extras)) delete extras[k]
+  connectedAt.value = null
+  void notifier.stop()
+}
+
 function endTrip(): void {
   garage.finishTrip(session.finish(Date.now()))
   refreshTripLive()
@@ -280,6 +353,7 @@ function handleLost(msg: string): void {
   milOn.value = false
   warmup.reset()
   warmupInfo.value = warmup.info()
+  clearReadings()
   pollError = false
   error.value = msg
   scheduleReconnect()
@@ -315,6 +389,8 @@ async function connect(auto = false): Promise<void> {
       warmup.reset()
       warmupInfo.value = warmup.info()
       void ensureNotifyPermission()
+      connectedAt.value = Date.now()
+      void notifier.start(() => ({ since: connectedAt.value ?? Date.now(), values: values.value, via: kind }))
       svc.onLost = () => handleLost('Адаптер отключился')
       void pollLoop(++loopToken, svc)
       return
@@ -347,6 +423,7 @@ async function disconnect(): Promise<void> {
   milOn.value = false
   warmup.reset()
   warmupInfo.value = warmup.info()
+  clearReadings()
   if (pollError) { pollError = false; error.value = null }
   if (wasMock) {
     endTrip() // демо-поездка заканчивается вместе с демо-подключением
@@ -379,6 +456,8 @@ const ecuSilent = computed(() => {
 export function useVehicle() {
   return {
     prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, gpsState, gpsFix, gpsError, milOn, tripActive, protocolName, warmupInfo,
+    values, history, connectedAt, ecuStatus,
+    liveTrip: () => session.snapshot(),
     session,
     isConnected: computed(() => status.value === 'connected'),
     /** Адаптер на связи, но ЭБУ не отдаёт ни один основной параметр (обычно выключено зажигание). */

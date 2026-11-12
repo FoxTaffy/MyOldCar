@@ -3,12 +3,20 @@ name: Android APK
 on:
   push:
     branches: ['**']
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Опубликовать релиз vX.Y.Z (версия из package.json)'
+        type: boolean
+        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -30,18 +38,58 @@ jobs:
           yes | "$SDKM" --licenses > /dev/null || true
           "$SDKM" "platforms;android-36" "build-tools;36.0.0"
 
+      # Тег vX.Y.Z задаёт версию приложения (то, с чем сравнивает проверка обновлений).
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm version --no-git-tag-version "${GITHUB_REF_NAME#v}"
       - run: npm ci
       - run: npm test
       - run: npm run build
 
       # Папка android/ не хранится в репозитории — генерируем при сборке.
       - run: npx cap add android
-      - run: node scripts/patch-android.mjs
       - run: npx cap sync android
+      - name: Foreground-сервис (постоянное уведомление)
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            export KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
+            echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          fi
+          node scripts/patch-android.mjs
 
       - name: Build debug APK
         working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleDebug --no-daemon
+
+      - name: Read version
+        id: ver
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          echo "v=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk MyOldCar.apk
+
+      # Релиз: .apk прикладывается как есть (не zip), его скачивает и сама проверка обновлений.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release || contains(github.event.head_commit.message, '[release]')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          files: MyOldCar.apk
+          generate_release_notes: true
 
       - uses: actions/upload-artifact@v4
         with:

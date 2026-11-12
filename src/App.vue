@@ -3,15 +3,18 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import OnboardingWizard from '@/components/OnboardingWizard.vue'
 import { useGarage } from '@/composables/useGarage'
+import { useUpdate } from '@/composables/useUpdate'
 import { useVehicle } from '@/composables/useVehicle'
 import { carShort } from '@/services/Cars'
 
 const v = useVehicle()
 const { car } = useGarage()
 const route = useRoute()
+const up = useUpdate()
 const showSetup = ref(!v.prefs.onboarded)
 const tabs = [
   { to: '/', label: 'Панель' },
+  { to: '/sensors', label: 'Датчики' },
   { to: '/diagnostics', label: 'Ошибки' },
   { to: '/performance', label: '0–100' },
   { to: '/stats', label: 'Поездки' },
@@ -19,7 +22,7 @@ const tabs = [
 ]
 /** Карта поездки — часть раздела «Поездки»: вкладка должна оставаться подсвеченной. */
 const activeTab = computed(() => (route.path.startsWith('/trip') ? '/stats' : route.path))
-onMounted(() => v.autoStart())
+onMounted(() => { v.autoStart(); void up.check() })
 const viaText = { ble: 'BLUETOOTH', wifi: 'WI-FI', mock: 'ДЕМО' } as const
 const statusText = computed(() => {
   if (v.status.value === 'connecting') return (v.note.value ?? 'Подключение…').toUpperCase()
@@ -55,16 +58,21 @@ const dot = computed(() => (v.status.value === 'connected' ? (v.ecuSilent.value 
       </button>
     </header>
 
+    <div v-if="up.update.value" class="flex items-center gap-2 border-b border-night-600 bg-night-800 px-4 py-2 text-xs">
+      <span class="mr-auto">Доступна версия <span class="font-mono text-ok">{{ up.update.value.version }}</span></span>
+      <button class="btn !px-3 !py-1.5 !text-[11px]" @click="up.install()">Обновить</button>
+    </div>
+
     <main class="min-h-0 flex-1 overflow-y-auto p-3">
       <RouterView />
     </main>
 
     <OnboardingWizard v-if="showSetup" @done="showSetup = false" />
 
-    <nav class="grid grid-cols-5 border-t border-night-600 bg-night-900 pb-[env(safe-area-inset-bottom)]">
+    <nav class="grid grid-cols-6 border-t border-night-600 bg-night-900 pb-[env(safe-area-inset-bottom)]">
       <RouterLink
         v-for="t in tabs" :key="t.to" :to="t.to"
-        class="border-t-2 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.1em]"
+        class="border-t-2 py-3 text-center text-[9px] font-semibold uppercase tracking-[0.1em]"
         :class="activeTab === t.to ? 'border-accent text-[#d5dae2]' : 'border-transparent text-[#7b8696]'"
       >
         {{ t.label }}
