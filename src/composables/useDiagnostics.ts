@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { diagnose } from '@/services/DiagnosticEngine'
 import type { FreezeFrame } from '@/services/ELMService'
@@ -25,6 +26,7 @@ const error = ref<string | null>(null)
 
 export function useDiagnostics() {
   const { settings, snapshot, getElm, protocolName } = useVehicle()
+  const { setLastDiag } = useGarage()
 
   async function scan(): Promise<void> {
     if (busy.value) return
@@ -53,6 +55,7 @@ export function useDiagnostics() {
         milOn: live?.milOn ?? null,
         protocol: protocolName.value,
       }
+      setLastDiag(stored.length + pending.length)
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
     } finally {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '@/components/PageHeader.vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -78,7 +79,7 @@ const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeA
 
 function popupHtml(p: TrackPoint, title?: string): string {
   // В окне — только то, что есть: пустые строки (GPS-поездка без OBD) не показываем.
-  const rows = facts(p).filter(([, v]) => v !== '—').map(([k, v]) => `<tr><td style="color:#7b8696;padding-right:10px">${esc(k)}</td><td style="font-family:ui-monospace,monospace;text-align:right">${esc(v)}</td></tr>`).join('')
+  const rows = facts(p).filter(([, v]) => v !== '—').map(([k, v]) => `<tr><td style="color:rgb(var(--mute));padding-right:10px">${esc(k)}</td><td style="font-family:ui-monospace,monospace;text-align:right">${esc(v)}</td></tr>`).join('')
   return `<div style="min-width:190px;color:#12161d">${title ? `<b>${esc(title)}</b>` : ''}<table style="font-size:12px;width:100%">${rows}</table><div class="place" style="margin-top:6px;font-size:12px;color:#4a5260">определяю место…</div></div>`
 }
 
@@ -125,7 +126,7 @@ function marker(p: { lat: number | null; lon: number | null }, html: string, siz
   m.addTo(layer)
 }
 
-const badge = (bg: string, text: string, border = '#0d1015'): string =>
+const badge = (bg: string, text: string, border = '#ffffff'): string =>
   `<div style="width:26px;height:26px;border-radius:50%;background:${bg};border:2px solid ${border};color:#fff;font:700 14px/22px system-ui;text-align:center">${text}</div>`
 
 /** Всплывающее окно у точки; адрес дописывается, когда придёт (и только если окно всё ещё открыто на этой точке). */
@@ -160,7 +161,7 @@ function draw(): void {
   marker(first, badge('#5fae7a', 'A'), 26, () => pick(first))
   if (!isLive) marker(last, badge('#4a86c8', 'B'), 26, () => pick(last))
   for (const s of analysis.value.stops) {
-    marker(s, `<div style="padding:2px 6px;border-radius:3px;background:#12161d;border:1px solid #d6a23f;color:#d6a23f;font:600 11px system-ui;white-space:nowrap;width:max-content;transform:translate(-50%,-50%)">P ${span(s.end - s.start)}</div>`, 1, () => {
+    marker(s, `<div style="padding:2px 6px;border-radius:3px;background:#fff;border:1px solid #d6a23f;color:#d6a23f;font:600 11px system-ui;white-space:nowrap;width:max-content;transform:translate(-50%,-50%)">P ${span(s.end - s.start)}</div>`, 1, () => {
       pick(points.value.find((x) => x.t >= s.start) ?? first)
     })
   }
@@ -235,15 +236,13 @@ const cost = computed(() => (trip.value && trip.value.fuelL > 0 ? trip.value.fue
 
 <template>
   <section class="space-y-2">
-    <div class="flex items-center gap-2">
-      <RouterLink to="/stats" class="btn-ghost btn-sm">← Поездки</RouterLink>
-      <div class="truncate font-mono text-sm">{{ trip ? dateTime(trip.start) : isLive ? 'Текущая поездка' : '—' }}</div>
-      <span v-if="isLive" class="label ml-auto shrink-0" :class="tripActive ? 'text-ok' : ''">{{ tripActive ? 'идёт запись' : 'не идёт' }}</span>
-    </div>
+    <PageHeader :title="trip ? dateTime(trip.start) : isLive ? 'Текущая поездка' : 'Поездка'">
+      <template #right><span v-if="isLive" class="pr-2 text-xs font-medium" :class="tripActive ? 'text-ok' : 'text-faint'">{{ tripActive ? '● запись' : 'не идёт' }}</span></template>
+    </PageHeader>
 
     <div class="relative">
-      <div ref="mapEl" class="trip-map h-[52vh] w-full border border-night-600" />
-      <p v-if="!hasRoute" class="absolute inset-x-3 top-3 z-[500] border border-night-600 bg-night-900 p-3 text-sm muted">{{ emptyText }}</p>
+      <div ref="mapEl" class="trip-map h-[52vh] w-full overflow-hidden rounded-2xl border border-night-600" />
+      <p v-if="!hasRoute" class="rounded-xl absolute inset-x-3 top-3 z-[500] border border-night-600 bg-night-900 p-3 text-sm muted">{{ emptyText }}</p>
     </div>
 
     <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] muted">
@@ -312,10 +311,10 @@ const cost = computed(() => (trip.value && trip.value.fuelL > 0 ? trip.value.fue
 
 <style>
 /* Тёмная карта: инвертируем светлые тайлы OSM, маркеры и линии не трогаем. */
-.trip-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
-.trip-map { background: #0d1015; }
-.trip-map .leaflet-control-attribution { background: rgba(13, 16, 21, 0.8); color: #7b8696; }
-.trip-map .leaflet-control-attribution a { color: #7fb0e6; }
-.trip-map .leaflet-bar a { background: #12161d; color: #d5dae2; border-color: #262e3b; }
-.trip-map .leaflet-bar a:hover { background: #1a202a; }
+:root[data-theme="dark"] .trip-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
+.trip-map { background: rgb(var(--inset)); }
+.trip-map .leaflet-control-attribution { background: rgb(var(--card) / 0.85); color: rgb(var(--mute)); }
+.trip-map .leaflet-control-attribution a { color: rgb(var(--accent)); }
+.trip-map .leaflet-bar a { background: rgb(var(--card)); color: rgb(var(--ink)); border-color: rgb(var(--line)); }
+.trip-map .leaflet-bar a:hover { background: rgb(var(--raised)); }
 </style>

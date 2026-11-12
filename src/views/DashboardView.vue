@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '@/components/PageHeader.vue'
 import { computed, ref, watch } from 'vue'
 import GaugeTile from '@/components/GaugeTile.vue'
 import OilGauge from '@/components/OilGauge.vue'
@@ -53,7 +54,7 @@ const voltLevel = (v: number | null | undefined, rpm: number | null | undefined)
   if ((rpm ?? 0) < 400) return v >= 12 ? 'ok' : v >= 11.5 ? 'warn' : 'bad'
   return v >= 13.2 && v <= 14.8 ? 'ok' : v >= 12.4 && v <= 15.2 ? 'warn' : 'bad'
 }
-const color = (l: Level) => ({ ok: 'text-[#d5dae2]', warn: 'text-warn', bad: 'text-bad' }[l])
+const color = (l: Level) => ({ ok: 'text-ink', warn: 'text-warn', bad: 'text-bad' }[l])
 const signed = (v: number): string => (v > 0 ? '+' : '') + num(v, 1)
 
 const rows = computed(() => {
@@ -94,25 +95,26 @@ const gpsText = computed(() => {
 
 <template>
   <section class="space-y-2">
+    <PageHeader title="Приборная доска" />
     <RouterLink v-if="milOn" to="/diagnostics" class="flex items-center gap-3 border border-bad p-3 text-bad">
       <span class="mil h-8 w-8 text-xl">!</span>
       <span class="text-sm"><b>Горит Check Engine.</b> Нажмите, чтобы считать коды. Место, где лампа загорелась, отмечено «!» на карте поездки.</span>
     </RouterLink>
-    <p v-if="status === 'disconnected'" class="border border-night-600 p-3 text-sm muted">
+    <p v-if="status === 'disconnected'" class="rounded-xl border border-night-600 p-3 text-sm muted">
       Нет связи с адаптером. Нажмите «Подключить»{{ prefs.mode === 'mock' ? ' — в демо-режиме данные симулируются' : '' }}.
     </p>
-    <p v-else-if="ecuSilent" class="border border-warn p-3 text-sm text-warn">
+    <p v-else-if="ecuSilent" class="rounded-xl border border-warn p-3 text-sm text-warn">
       Адаптер на связи, но ЭБУ не отвечает. Включите зажигание — показания появятся сами.
     </p>
-    <div v-if="isConnected && warmupInfo.state === 'warming'" class="border border-warn p-3">
+    <div v-if="isConnected && warmupInfo.state === 'warming'" class="rounded-xl border border-warn p-3">
       <div class="flex items-baseline justify-between text-sm">
         <b class="text-warn">Двигатель прогревается</b>
         <span class="font-mono text-xs muted">{{ num(warmupInfo.tempC) }} / {{ READY_C }} °C<template v-if="warmupInfo.etaMin != null"> · ~{{ warmupInfo.etaMin }} мин</template></span>
       </div>
-      <div class="mt-2 h-1.5 bg-night-600"><div class="h-full bg-warn transition-all" :style="{ width: Math.round(warmupInfo.progress * 100) + '%' }" /></div>
+      <div class="mt-2 h-2 overflow-hidden rounded-full bg-night-700"><div class="h-full rounded-full bg-warn transition-all" :style="{ width: Math.round(warmupInfo.progress * 100) + '%' }" /></div>
       <p class="mt-2 text-xs muted">Когда ОЖ дойдёт до {{ READY_C }} °C, придёт уведомление — можно ехать.</p>
     </div>
-    <div v-else-if="isConnected && warmupInfo.state === 'ready' && (snapshot?.coolantTempC ?? 0) >= READY_C" class="border border-ok p-2 text-sm text-ok">Двигатель прогрет — можно ехать.</div>
+    <div v-else-if="isConnected && warmupInfo.state === 'ready' && (snapshot?.coolantTempC ?? 0) >= READY_C" class="rounded-xl border border-ok p-2 text-sm text-ok">Двигатель прогрет — можно ехать.</div>
 
     <div class="grid grid-cols-2 gap-2">
       <GaugeTile label="Скорость" :value="num(snapshot?.speedKmh)" unit="км/ч" :level="speedLevel(snapshot?.speedKmh ?? null)" />
@@ -136,7 +138,7 @@ const gpsText = computed(() => {
         <span class="label">Поездка<span v-if="tripActive" class="text-ok"> · идёт запись</span></span>
         <span class="shrink-0 font-mono text-[11px] muted">GPS: {{ gpsText }}</span>
       </div>
-      <div v-if="gpsState === 'denied' || gpsState === 'error'" class="mb-2 border border-warn p-2 text-xs">
+      <div v-if="gpsState === 'denied' || gpsState === 'error'" class="rounded-xl mb-2 border border-warn p-2 text-xs">
         <p class="font-mono text-warn">{{ gpsError ?? 'GPS недоступен' }}</p>
         <div class="mt-2 flex gap-2">
           <button class="btn-ghost btn-sm" @click="openGpsSettings()">Открыть настройки</button>

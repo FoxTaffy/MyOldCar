@@ -1,3 +1,4 @@
+import { defaultServices, type ServiceItem } from './Maintenance'
 import { DEFAULT_OIL, type OilState } from './OilService'
 
 /** Профиль автомобиля. Все поля, кроме id и названия, необязательны. */
@@ -31,9 +32,16 @@ export interface Car {
   /** Масло и пробег, учитываемый приложением — у каждой машины свои. */
   oil: OilState
   trackedTotalKm: number
+  /** Дата начала владения (YYYY-MM-DD) и пробег при покупке, км. */
+  purchaseISO: string | null
+  purchaseKm: number | null
+  /** Прочие расходники с интервалами замены (масло ведётся отдельно — oil). */
+  services: ServiceItem[]
+  /** Последнее чтение ошибок: когда и сколько кодов. */
+  lastDiag: { at: number; count: number } | null
 }
 
-export type CarPreset = Partial<Omit<Car, 'id' | 'oil' | 'trackedTotalKm' | 'odometerKm' | 'odometerTrackedAt'>> & { label: string }
+export type CarPreset = Partial<Omit<Car, 'id' | 'oil' | 'trackedTotalKm' | 'odometerKm' | 'odometerTrackedAt' | 'purchaseISO' | 'purchaseKm' | 'services' | 'lastDiag'>> & { label: string }
 
 /** Типовые характеристики для быстрого заполнения (можно поправить руками). */
 export const CAR_PRESETS: CarPreset[] = [
@@ -55,7 +63,7 @@ export function newCar(init: Partial<Car> = {}): Car {
     name: 'Моя машина', make: '', model: '', year: null, vin: '', plate: '', color: '', body: '',
     engineCode: '', displacementL: null, powerHp: null, fuel: '', transmission: '', drive: '',
     tankL: null, odometerKm: null, odometerTrackedAt: 0, oilSpec: '', oilCapacityL: null, tires: '', notes: '',
-    oil: { ...DEFAULT_OIL }, trackedTotalKm: 0,
+    oil: { ...DEFAULT_OIL }, trackedTotalKm: 0, purchaseISO: null, purchaseKm: null, services: defaultServices(), lastDiag: null,
     ...init,
   }
 }

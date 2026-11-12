@@ -1,5 +1,6 @@
 import type { SensorDef } from '@/data/sensors'
 import { fuelLitersPerHour } from './FuelCalculator'
+import type { TripStyle } from './DrivingStyle'
 import { SensorStatsRecorder, type SensorAgg, type TripSeries } from './SensorStats'
 
 /** Событие в пути: загорелась лампа Check Engine. */
@@ -34,6 +35,8 @@ export interface Trip {
   sensors?: Record<string, SensorAgg>
   /** Ряды для графика поездки. */
   series?: TripSeries
+  /** Стиль вождения: резкие разгоны/торможения, превышения, ночь, обороты (у старых записей нет). */
+  style?: TripStyle
 }
 
 export const tripAvgSpeed = (t: Trip): number => (t.movingMs > 0 ? t.distanceKm / (t.movingMs / 3_600_000) : 0)

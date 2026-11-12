@@ -1,0 +1,42 @@
+/** Короткий справочник марок и моделей для мастера добавления автомобиля. Нужной нет — есть «Ручной ввод». */
+export const CATALOG: Record<string, string[]> = {
+  LADA: ['2104', '2105', '2106', '2107', '2108', '2109', '21099', '2110', '2112', '2114', '2115', '2121 Нива', 'Niva Legend', 'Niva Travel', 'Granta', 'Kalina', 'Priora', 'Vesta', 'XRAY', 'Largus'],
+  'ВАЗ': ['2101', '2102', '2103', '2104', '2105', '2106', '2107', '2108', '2109', '21099', '2110', '2111', '2112', '2113', '2114', '2115', '2121 Нива'],
+  'ГАЗ': ['Волга 24', 'Волга 3110', 'Волга 31105', 'Газель', 'Соболь'],
+  'УАЗ': ['Патриот', 'Хантер', 'Буханка'],
+  'Москвич': ['412', '2140', '2141'],
+  'Daewoo': ['Nexia', 'Matiz', 'Lanos'],
+  Chevrolet: ['Niva', 'Lacetti', 'Aveo', 'Cruze', 'Lanos'],
+  Ford: ['Focus', 'Fiesta', 'Mondeo', 'Fusion', 'Transit'],
+  Honda: ['Civic', 'Accord', 'CR-V', 'Fit'],
+  Hyundai: ['Solaris', 'Accent', 'Elantra', 'Getz', 'Santa Fe', 'Tucson'],
+  Kia: ['Rio', 'Ceed', 'Sportage', 'Cerato', 'Spectra'],
+  Mazda: ['3', '6', 'CX-5', '323'],
+  Mitsubishi: ['Lancer', 'Outlander', 'Pajero', 'Colt'],
+  Nissan: ['Almera', 'Qashqai', 'Note', 'Tiida', 'X-Trail'],
+  Opel: ['Astra', 'Vectra', 'Corsa', 'Zafira'],
+  Renault: ['Logan', 'Sandero', 'Duster', 'Megane', 'Clio'],
+  Skoda: ['Octavia', 'Fabia', 'Rapid', 'Superb'],
+  Toyota: ['Corolla', 'Camry', 'RAV4', 'Land Cruiser', 'Yaris'],
+  Volkswagen: ['Golf', 'Polo', 'Passat', 'Jetta', 'Tiguan'],
+  Audi: ['A4', 'A6', '80', '100'],
+  BMW: ['3 Series', '5 Series', 'X5', 'E34', 'E39'],
+  'Mercedes-Benz': ['C-Class', 'E-Class', 'W124', 'Sprinter'],
+  Peugeot: ['206', '307', '408', '3008'],
+  Citroen: ['C4', 'Berlingo', 'C3'],
+  Suzuki: ['Swift', 'Grand Vitara', 'Jimny'],
+  Subaru: ['Impreza', 'Forester', 'Legacy'],
+  Lexus: ['IS', 'RX', 'LX'],
+  Chery: ['Tiggo', 'Amulet', 'M11'],
+  Geely: ['Emgrand', 'Atlas', 'MK'],
+}
+
+export const BRANDS = Object.keys(CATALOG)
+
+export const FUEL_TYPES: { id: string; label: string; car: 'АИ-92' | 'АИ-95' | 'АИ-98' | 'ДТ' | 'Газ' }[] = [
+  { id: 'АИ-92', label: 'Бензин АИ-92', car: 'АИ-92' },
+  { id: 'АИ-95', label: 'Бензин АИ-95', car: 'АИ-95' },
+  { id: 'АИ-98', label: 'Премиум бензин АИ-98', car: 'АИ-98' },
+  { id: 'ДТ', label: 'Дизель', car: 'ДТ' },
+  { id: 'Газ', label: 'Газ (LPG / метан)', car: 'Газ' },
+]

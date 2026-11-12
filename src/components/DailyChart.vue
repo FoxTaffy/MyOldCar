@@ -25,18 +25,18 @@ const fmtKm = (v: number) => (v >= 10 ? Math.round(v).toString() : v.toFixed(1).
 
 <template>
   <svg :viewBox="`0 0 ${W} ${H}`" class="w-full" role="img" aria-label="Пробег и расход по дням">
-    <g stroke="#262e3b"><line v-for="i in 4" :key="i" :x1="PAD" :x2="W - PAD" :y1="TOP + ((H - PAD - TOP) / 3) * (i - 1)" :y2="TOP + ((H - PAD - TOP) / 3) * (i - 1)" /></g>
+    <g stroke="rgb(var(--line))"><line v-for="i in 4" :key="i" :x1="PAD" :x2="W - PAD" :y1="TOP + ((H - PAD - TOP) / 3) * (i - 1)" :y2="TOP + ((H - PAD - TOP) / 3) * (i - 1)" /></g>
     <g v-for="(d, i) in days" :key="d.label">
-      <rect :x="x(i) - Math.min(28, slot * 0.35)" :y="yKm(d.km)" :width="Math.min(56, slot * 0.7)" :height="Math.max(1, H - PAD - yKm(d.km))" fill="#4a86c8" />
-      <text :x="x(i)" :y="H - 8" text-anchor="middle" font-size="12" fill="#7b8696">{{ d.label }}</text>
-      <text :x="x(i)" :y="yKm(d.km) - 5" text-anchor="middle" font-size="12" fill="#aab3c0">{{ fmtKm(d.km) }}</text>
+      <rect :x="x(i) - Math.min(28, slot * 0.35)" :y="yKm(d.km)" :width="Math.min(56, slot * 0.7)" :height="Math.max(1, H - PAD - yKm(d.km))" fill="rgb(var(--accent))" />
+      <text :x="x(i)" :y="H - 8" text-anchor="middle" font-size="12" fill="rgb(var(--mute))">{{ d.label }}</text>
+      <text :x="x(i)" :y="yKm(d.km) - 5" text-anchor="middle" font-size="12" fill="rgb(var(--soft))">{{ fmtKm(d.km) }}</text>
     </g>
     <polyline v-if="dots.length > 1" :points="line" fill="none" stroke="#d6a23f" stroke-width="2" />
     <g v-for="p in dots" :key="p.x">
-      <circle :cx="p.x" :cy="p.y" r="4" fill="#d6a23f" stroke="#12161d" stroke-width="2" />
+      <circle :cx="p.x" :cy="p.y" r="4" fill="#d6a23f" stroke="rgb(var(--card))" stroke-width="2" />
       <text v-if="showValues" :x="p.x + 8" :y="p.y + 4" font-size="12" fill="#d6a23f">{{ p.v.toFixed(1).replace('.', ',') }}</text>
     </g>
-    <rect :x="PAD" y="6" width="10" height="10" fill="#4a86c8" /><text :x="PAD + 15" y="15" font-size="12" fill="#aab3c0">пробег, км</text>
-    <circle :cx="W - PAD - 92" cy="11" r="4" fill="#d6a23f" /><text :x="W - PAD" y="15" text-anchor="end" font-size="12" fill="#aab3c0">расход, л/100</text>
+    <rect :x="PAD" y="6" width="10" height="10" fill="rgb(var(--accent))" /><text :x="PAD + 15" y="15" font-size="12" fill="rgb(var(--soft))">пробег, км</text>
+    <circle :cx="W - PAD - 92" cy="11" r="4" fill="#d6a23f" /><text :x="W - PAD" y="15" text-anchor="end" font-size="12" fill="rgb(var(--soft))">расход, л/100</text>
   </svg>
 </template>

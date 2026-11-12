@@ -120,29 +120,29 @@ async function finish(): Promise<void> {
           <span v-else class="font-mono text-xs muted">{{ step + 1 }} / {{ steps.length }}</span>
         </div>
         <div class="grid gap-1" :style="{ gridTemplateColumns: `repeat(${steps.length}, 1fr)` }">
-          <button v-for="(s, i) in steps" :key="s" class="border-t-2 pt-1 text-left text-[10px] font-semibold uppercase tracking-wider" :class="i === step ? 'border-accent text-[#d5dae2]' : i < step ? 'border-accent/50 muted' : 'border-night-600 text-[#4a5260]'" :disabled="i > step && !!problem" @click="step = i">{{ stepNames[s] }}</button>
+          <button v-for="(s, i) in steps" :key="s" class="border-t-[3px] pt-1.5 text-left text-[11px] font-semibold" :class="i === step ? 'border-accent text-ink' : i < step ? 'border-accent/50 muted' : 'border-night-600 text-faint'" :disabled="i > step && !!problem" @click="step = i">{{ stepNames[s] }}</button>
         </div>
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto px-5">
         <section v-if="current === 'connect'" class="space-y-2">
-          <label v-for="m in modes" :key="m.k" class="flex items-start gap-3 border p-3" :class="prefs.mode === m.k ? 'border-accent' : 'border-night-600'">
+          <label v-for="m in modes" :key="m.k" class="flex items-start gap-3 rounded-2xl border bg-night-800 p-3" :class="prefs.mode === m.k ? 'border-accent bg-accent-soft' : 'border-night-600'">
             <input type="radio" name="mode" class="mt-0.5" :checked="prefs.mode === m.k" @change="prefs.mode = m.k" />
             <span><b>{{ m.t }}</b><br /><span class="text-xs muted">{{ m.d }}</span></span>
           </label>
 
-          <div v-if="showBle" class="border border-night-600 p-3">
+          <div v-if="showBle" class="rounded-xl border border-night-600 p-3">
             <div class="label mb-1">Bluetooth-адаптер</div>
             <div class="flex items-center gap-2">
               <span class="mr-auto min-w-0 truncate font-mono text-sm">{{ prefs.bleName || 'не выбран' }}</span>
               <button v-if="prefs.bleId" class="link" @click="forgetAdapter">забыть</button>
               <button class="btn-ghost btn-sm shrink-0" :disabled="bleBusy" @click="findAdapter">{{ bleBusy ? 'Поиск…' : prefs.bleId ? 'Сменить' : 'Найти адаптер' }}</button>
             </div>
-            <p class="mt-2 text-xs text-[#5f6978]">Включите зажигание, вставьте адаптер и нажмите «Найти». Перед этим закройте Car Scanner и другие OBD-приложения: BLE-адаптер принимает только одно подключение.</p>
+            <p class="mt-2 text-xs text-faint">Включите зажигание, вставьте адаптер и нажмите «Найти». Перед этим закройте Car Scanner и другие OBD-приложения: BLE-адаптер принимает только одно подключение.</p>
             <p v-if="bleError" class="mt-1 font-mono text-xs text-bad">{{ bleError }}</p>
           </div>
 
-          <div v-if="showWifi" class="grid grid-cols-3 gap-3 border border-night-600 p-3">
+          <div v-if="showWifi" class="rounded-xl grid grid-cols-3 gap-3 border border-night-600 p-3">
             <label class="col-span-2 text-xs muted">IP адаптера (Wi-Fi)
               <input v-model="prefs.host" inputmode="decimal" autocomplete="off" spellcheck="false" class="field mt-1" :class="hostOk ? '' : '!border-bad'" />
             </label>
@@ -165,9 +165,9 @@ async function finish(): Promise<void> {
 
         <section v-else-if="current === 'context'" class="space-y-2">
           <p class="text-sm muted">Что недавно делали с машиной — по этому диагност точнее оценивает причины ошибок. Эти же галочки есть на вкладке «Ошибки».</p>
-          <label v-for="t in toggles" :key="t.key" class="flex items-start gap-3 border p-3" :class="settings[t.key] ? 'border-accent' : 'border-night-600'">
+          <label v-for="t in toggles" :key="t.key" class="rounded-xl flex items-start gap-3 border p-3" :class="settings[t.key] ? 'border-accent' : 'border-night-600'">
             <input v-model="settings[t.key]" type="checkbox" class="mt-0.5" />
-            <span class="text-sm">{{ t.label }}<br /><span class="text-xs text-[#5f6978]">{{ t.hint }}</span></span>
+            <span class="text-sm">{{ t.label }}<br /><span class="text-xs text-faint">{{ t.hint }}</span></span>
           </label>
         </section>
 
@@ -190,7 +190,7 @@ async function finish(): Promise<void> {
         </section>
 
         <section v-else class="space-y-3">
-          <p class="text-sm muted">Подключение: <b class="text-[#d5dae2]">{{ summary }}</b>.</p>
+          <p class="text-sm muted">Подключение: <b class="text-ink">{{ summary }}</b>.</p>
           <p class="text-sm muted">Приложение только читает данные из ЭБУ и ничего в нём не меняет. Настройки открываются кнопкой справа вверху, профиль машины — по её названию в шапке.</p>
           <label class="flex items-center gap-3 text-sm"><input v-model="connectNow" type="checkbox" /> Подключиться сразу</label>
         </section>

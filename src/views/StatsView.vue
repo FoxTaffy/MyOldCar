@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import Segmented from '@/components/Segmented.vue'
 import TripChart from '@/components/TripChart.vue'
 import DailyChart, { type DayPoint } from '@/components/DailyChart.vue'
 import { useGarage } from '@/composables/useGarage'
@@ -70,10 +71,8 @@ function wipe(): void {
 
 <template>
   <section class="space-y-2">
-    <div class="grid grid-cols-3 border border-night-600">
-      <button v-for="p in periods" :key="p.k" class="py-2 text-xs font-semibold uppercase tracking-wider" :class="period === p.k ? 'bg-accent text-night-950' : 'muted'" @click="period = p.k">{{ p.l }}</button>
-    </div>
-    <p v-if="demoMode" class="border border-night-600 p-2 text-center text-xs muted">Демо-режим: показаны симулированные поездки. В статистику машины и счётчик масла они не идут.</p>
+    <Segmented :options="periods.map((x) => ({ id: x.k, label: x.l }))" :model-value="period" class="flex w-full [&>button]:flex-1" @update:model-value="period = $event as typeof period" />
+    <p v-if="demoMode" class="rounded-xl bg-accent-soft p-2.5 text-center text-xs text-soft">Демо-режим: показаны симулированные поездки. В статистику машины и счётчик масла они не идут.</p>
 
     <div v-if="!trips.length" class="card p-4 text-sm muted">
       {{ mine.length ? 'За выбранный период поездок нет — выберите период побольше.' : 'Поездок пока нет. Запись идёт сама: по GPS и датчикам, в том числе при свёрнутом приложении.' }}
@@ -126,14 +125,14 @@ function wipe(): void {
               <li v-for="l in sensorLines(t)" :key="l.id" class="py-2">
                 <div class="flex flex-wrap items-baseline justify-between gap-x-2">
                   <span class="text-sm font-semibold" :class="lineColor[l.level]">{{ l.name }}</span>
-                  <span class="font-mono text-[11px] text-[#7b8696]">мин {{ num(l.min, 1) }} · ср {{ num(l.avg, 1) }} · макс {{ num(l.max, 1) }} {{ l.unit }}</span>
+                  <span class="font-mono text-[11px] text-mute">мин {{ num(l.min, 1) }} · ср {{ num(l.avg, 1) }} · макс {{ num(l.max, 1) }} {{ l.unit }}</span>
                 </div>
                 <div class="my-1 flex h-1.5 w-full overflow-hidden bg-night-600">
                   <span :class="BAR.ok" :style="{ width: l.ok * 100 + '%' }" />
                   <span :class="BAR.warn" :style="{ width: l.warn * 100 + '%' }" />
                   <span :class="BAR.bad" :style="{ width: l.bad * 100 + '%' }" />
                 </div>
-                <p class="text-xs text-[#aab3c0]">{{ l.text }}</p>
+                <p class="text-xs text-soft">{{ l.text }}</p>
               </li>
             </ul>
           </div>
@@ -144,8 +143,8 @@ function wipe(): void {
         <div class="mt-2 flex items-center gap-2">
           <span v-if="t.events?.length" class="mil h-6 w-6 !border text-sm" title="Загоралась лампа Check Engine">!</span>
           <RouterLink v-if="t.hasTrack" :to="`/trip/${t.id}`" class="btn-ghost btn-sm">Карта и данные</RouterLink>
-          <span v-else class="text-xs text-[#5f6978]">без трека</span>
-          <span v-if="t.source" class="font-mono text-[10px] uppercase tracking-wider text-[#5f6978]">{{ sourceText[t.source] }}</span>
+          <span v-else class="text-xs text-faint">без трека</span>
+          <span v-if="t.source" class="font-mono text-[10px] uppercase tracking-wider text-faint">{{ sourceText[t.source] }}</span>
           <button v-if="t.id !== 'live'" class="link ml-auto" @click="askDelete(t.id)">удалить</button>
         </div>
       </article>

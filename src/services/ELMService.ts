@@ -802,15 +802,19 @@ export interface ConnectTarget {
   port?: number
   bleId?: string
   protocol?: string
+  /** Ожидание ответа адаптера, мс. */
+  timeoutMs?: number
+  /** Попыток подключения по Bluetooth. */
+  attempts?: number
 }
 
 /** Фабрика сервиса под выбранный способ связи. */
 export function createElmService(t: ConnectTarget): ELMService {
-  const cfg = { ...DEFAULT_ELM_CONFIG, host: t.host ?? DEFAULT_ELM_CONFIG.host, port: t.port ?? DEFAULT_ELM_CONFIG.port, protocol: t.protocol || undefined }
+  const cfg = { ...DEFAULT_ELM_CONFIG, host: t.host ?? DEFAULT_ELM_CONFIG.host, port: t.port ?? DEFAULT_ELM_CONFIG.port, protocol: t.protocol || undefined, timeoutMs: t.timeoutMs ?? DEFAULT_ELM_CONFIG.timeoutMs }
   if (t.kind === 'mock') return new ELMService(new MockTransport(), cfg)
   if (t.kind === 'ble') {
     if (!t.bleId) throw new Error('Bluetooth-адаптер не выбран')
-    return new ELMService(new BleTransport(t.bleId), cfg)
+    return new ELMService(new BleTransport(t.bleId, undefined, t.attempts ? { attempts: t.attempts } : {}), cfg)
   }
   // В браузере «сырого» TCP нет — остаётся только мост ws:// (для разработки).
   return new ELMService(Capacitor.isNativePlatform() ? new CapacitorTcpTransport(cfg) : new WebSocketTransport(cfg), cfg)
