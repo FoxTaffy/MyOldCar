@@ -53,8 +53,9 @@ const FROST_C = -5
 export function washAdvice(i: WashInput): WashAdvice {
   const salt = isSaltSeason(i.todayISO)
   const daysSince = i.lastWashISO ? Math.max(0, daysBetween(i.lastWashISO, i.todayISO)) : null
-  // Записей нет — исходим из трёх недель, чтобы не молчать.
-  const days = daysSince ?? 21
+  // Записей о мойках нет: по дням судить не с чего (новичок не должен сразу слышать «пора мыть»),
+  // поэтому опираемся на пробег и погоду, а мойку просим отметить в журнале.
+  const days = daysSince ?? 0
   const past = (i.weather ?? []).filter((d) => d.date <= i.todayISO && (!i.lastWashISO || d.date > i.lastWashISO))
   const rainyDays = past.filter((d) => d.rainMm >= DIRTY_RAIN_MM).length
   const reasons: string[] = []
@@ -63,7 +64,7 @@ export function washAdvice(i: WashInput): WashAdvice {
   if (salt) dirt += days * 1.8
   dirt = Math.round(Math.min(100, dirt))
 
-  if (daysSince == null) reasons.push('Мойки в журнале не отмечены — считаю, что прошло около 3 недель.')
+  if (daysSince == null) reasons.push('Мойки в журнале не отмечены — отметьте последнюю, и совет станет точнее. Пока считаю по пробегу и погоде.')
   else reasons.push(daysSince === 0 ? 'Помыта сегодня.' : `С последней мойки прошло ${daysSince} дн.`)
   if (i.kmSince >= 50) reasons.push(`Проехали ${Math.round(i.kmSince)} км.`)
   if (rainyDays) reasons.push(`Дождливых дней после мойки: ${rainyDays} — на дороге грязная вода.`)
