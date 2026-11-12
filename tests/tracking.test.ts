@@ -226,3 +226,26 @@ describe('Справочник DTC', () => {
     expect(searchDtcs('')).toEqual([])
   })
 })
+
+import { READY_C, WarmupTracker } from '@/services/WarmupTracker'
+describe('WarmupTracker: прогрев после подключения', () => {
+  it('холодный старт → уведомление один раз при достижении порога', () => {
+    const w = new WarmupTracker()
+    let fired = 0
+    w.onReady = () => { fired++ }
+    expect(w.feed(0, 20, 900).state).toBe('warming')
+    expect(w.feed(60_000, 30, 900).etaMin).toBe(Math.round((READY_C - 30) / 10))
+    w.feed(120_000, READY_C - 1, 900)
+    expect(fired).toBe(0)
+    expect(w.feed(180_000, READY_C, 900).state).toBe('ready')
+    w.feed(240_000, 85, 900)
+    expect(fired).toBe(1)
+  })
+  it('тёплый двигатель при подключении — без прогрева и уведомления', () => {
+    const w = new WarmupTracker()
+    let fired = 0
+    w.onReady = () => { fired++ }
+    expect(w.feed(0, 85, 800).state).toBe('ready')
+    expect(fired).toBe(0)
+  })
+})

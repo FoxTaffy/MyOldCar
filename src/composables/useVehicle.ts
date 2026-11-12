@@ -4,6 +4,8 @@ import { createElmService, type ELMService } from '@/services/ELMService'
 import { GpsService, type GpsState } from '@/services/GpsService'
 import { TripSession, type GpsFix } from '@/services/TripSession'
 import { destinationPoint } from '@/services/TripAnalysis'
+import { ensureNotifyPermission, notify } from '@/services/Notifier'
+import { WarmupTracker, type WarmupInfo } from '@/services/WarmupTracker'
 import { useGarage } from '@/composables/useGarage'
 import { DEFAULT_SETTINGS, type AppSettings, type ConnectionKind, type ConnectionMode, type SensorSnapshot } from '@/types'
 
@@ -67,6 +69,13 @@ const milOn = ref(false)
 const tripActive = ref(false)
 const IDLE_CHECK_MS = 30_000
 
+/** Прогрев двигателя после подключения: уведомление, когда можно ехать. */
+const warmup = new WarmupTracker()
+const warmupInfo = ref<WarmupInfo>(warmup.info())
+warmup.onReady = (t) => {
+  void notify('Двигатель прогрет — можно ехать', `Температура ОЖ ${Math.round(t)} °C. Трогайтесь без резких нагрузок, пока не дойдёт до рабочей.`)
+}
+
 let elm: ELMService | null = null
 let loopToken = 0
 let manualStop = false
@@ -125,6 +134,7 @@ function refreshTripLive(): void {
 
 function trackTrip(s: SensorSnapshot): void {
   milOn.value = s.milOn === true
+  warmupInfo.value = warmup.feed(s.timestamp, s.coolantTempC, s.rpm)
   garage.addDistance(session.feedObd(s.timestamp, s))
   refreshTripLive()
   if (via.value === 'mock') mockGps(s)
@@ -233,6 +243,8 @@ function handleLost(msg: string): void {
   via.value = null
   snapshot.value = null
   milOn.value = false
+  warmup.reset()
+  warmupInfo.value = warmup.info()
   error.value = msg
   scheduleReconnect()
 }
@@ -253,6 +265,9 @@ async function connect(auto = false): Promise<void> {
       via.value = kind
       status.value = 'connected'
       session.setCar(garage.car().id)
+      warmup.reset()
+      warmupInfo.value = warmup.info()
+      void ensureNotifyPermission()
       svc.onLost = () => handleLost('Адаптер отключился')
       void pollLoop(++loopToken, svc)
       return
@@ -279,6 +294,8 @@ async function disconnect(): Promise<void> {
   via.value = null
   snapshot.value = null
   milOn.value = false
+  warmup.reset()
+  warmupInfo.value = warmup.info()
 }
 
 /** Вызывать один раз при старте приложения. */
@@ -299,7 +316,7 @@ function autoStart(): void {
 
 export function useVehicle() {
   return {
-    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, gpsState, gpsFix, gpsError, milOn, tripActive,
+    prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, gpsState, gpsFix, gpsError, milOn, tripActive, warmupInfo,
     session,
     isConnected: computed(() => status.value === 'connected'),
     connect: () => connect(false),
