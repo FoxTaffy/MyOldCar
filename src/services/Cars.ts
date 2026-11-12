@@ -62,7 +62,9 @@ export function newCar(init: Partial<Car> = {}): Car {
 
 export function carTitle(c: Car): string {
   const model = [c.make, c.model].filter(Boolean).join(' ')
-  return c.name && model && c.name !== model ? `${c.name} · ${model}` : c.name || model || 'Автомобиль'
+  // «ВАЗ-2104» и «ВАЗ 2104» — одно и то же: не повторяем марку с моделью, если название их уже содержит.
+  const key = (t: string) => t.toLowerCase().replace(/[^a-zа-яё0-9]/gi, '')
+  return c.name && model && !key(c.name).includes(key(model)) ? `${c.name} · ${model}` : c.name || model || 'Автомобиль'
 }
 
 /** Короткая подпись для шапки. */

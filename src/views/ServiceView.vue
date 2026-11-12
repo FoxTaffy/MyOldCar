@@ -78,7 +78,7 @@ function saveOdometer(): void {
       <h2 class="label">Пробег</h2>
       <dl class="rows">
         <div><dt>Одометр сейчас (оценка)</dt><dd>{{ odoNow != null ? int(odoNow) + ' км' : 'не задан' }}</dd></div>
-        <div><dt>Записано приложением на этой машине</dt><dd>{{ num(car().trackedTotalKm, 1) }} км</dd></div>
+        <div><dt>Записано приложением</dt><dd>{{ num(car().trackedTotalKm, 1) }} км</dd></div>
       </dl>
       <label class="block text-xs muted">Показание одометра на приборке, км
         <div class="mt-1 flex gap-2">

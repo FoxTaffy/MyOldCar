@@ -33,22 +33,22 @@ const dot = computed(() => (v.status.value === 'connected' ? (v.ecuSilent.value 
   <div class="mx-auto flex h-full max-w-3xl flex-col">
     <header class="border-b border-night-600 px-3 py-2">
       <div class="flex items-center gap-2">
-        <RouterLink to="/garage" class="mr-auto block min-w-0" title="Профили автомобилей">
-          <div class="truncate text-sm font-semibold uppercase tracking-[0.12em]">{{ carShort(car()) }} <span class="muted">▾</span></div>
-          <div class="flex items-center gap-2 truncate font-mono text-[11px] text-[#7b8696]">
-            <span class="inline-block h-2 w-2 shrink-0" :class="dot" />
-            <span class="truncate">{{ statusText }}</span>
-            <span v-if="v.tripActive.value" class="shrink-0 text-ok">· ЗАПИСЬ</span>
-          </div>
+        <RouterLink to="/garage" class="mr-auto min-w-0 truncate py-1 text-sm font-semibold uppercase tracking-[0.12em]" title="Профили автомобилей">
+          {{ carShort(car()) }} <span class="muted">▾</span>
         </RouterLink>
         <RouterLink v-if="v.milOn.value" to="/diagnostics" class="mil h-9 w-9 text-lg" title="Горит Check Engine" aria-label="Горит Check Engine — открыть ошибки">!</RouterLink>
-        <button v-if="v.status.value === 'disconnected'" class="btn btn-sm" @click="v.connect()">Подключить</button>
-        <button v-else class="btn-ghost btn-sm" @click="v.disconnect()">{{ v.status.value === 'connecting' ? 'Отмена' : 'Отключить' }}</button>
-        <button class="btn-ghost btn-sm flex h-9 w-9 items-center justify-center !p-0" title="Настройки" aria-label="Настройки" @click="showSetup = true">
-          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" aria-hidden="true">
-            <path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><rect x="14" y="4.5" width="4" height="5" /><rect x="6" y="14.5" width="4" height="5" />
+        <button v-if="v.status.value === 'disconnected'" class="btn btn-sm h-9" @click="v.connect()">Подключить</button>
+        <button v-else class="btn-ghost btn-sm h-9" @click="v.disconnect()">{{ v.status.value === 'connecting' ? 'Отмена' : 'Отключить' }}</button>
+        <button class="flex h-9 w-9 shrink-0 items-center justify-center border border-night-600 text-[#c3cad5] active:bg-night-700" title="Настройки" aria-label="Настройки" @click="showSetup = true">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true">
+            <path d="M3 7h9M18 7h3M3 17h3M12 17h9" /><rect x="12" y="4" width="6" height="6" /><rect x="6" y="14" width="6" height="6" />
           </svg>
         </button>
+      </div>
+      <div class="mt-1 flex items-center gap-2 font-mono text-[11px] text-[#7b8696]">
+        <span class="inline-block h-2 w-2 shrink-0" :class="dot" />
+        <span class="min-w-0 truncate">{{ statusText }}</span>
+        <span v-if="v.tripActive.value" class="ml-auto shrink-0 text-ok">● ЗАПИСЬ ПОЕЗДКИ</span>
       </div>
       <button v-if="v.error.value" class="mt-1 flex w-full items-start gap-2 text-left font-mono text-xs text-bad" title="Скрыть" @click="v.clearError()">
         <span class="min-w-0 flex-1 break-words">{{ v.error.value }}</span><span class="muted shrink-0" aria-hidden="true">✕</span>

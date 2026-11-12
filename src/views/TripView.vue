@@ -8,7 +8,7 @@ import { useVehicle } from '@/composables/useVehicle'
 import { placeName } from '@/services/Geocoder'
 import { analyzeTrack, nearestPoint, speedColor, type TrackPoint } from '@/services/TripAnalysis'
 import { tripAvgSpeed, tripConsumption, type Trip } from '@/services/TripRecorder'
-import { dateTime, duration, num, span } from '@/utils/format'
+import { dateTime, liters, num, span } from '@/utils/format'
 
 const route = useRoute()
 const { garage, loadTrack } = useGarage()
@@ -260,9 +260,9 @@ const cost = computed(() => (trip.value && trip.value.fuelL > 0 ? trip.value.fue
       <div><div class="label">ср. км/ч</div><div class="font-mono text-lg tabular-nums">{{ num(tripAvgSpeed(trip), 0) }}</div></div>
       <div><div class="label">макс.</div><div class="font-mono text-lg tabular-nums">{{ num(trip.maxSpeedKmh, 0) }}</div></div>
       <div><div class="label">л/100</div><div class="font-mono text-lg tabular-nums">{{ num(tripConsumption(trip), 1) }}</div></div>
-      <div><div class="label">в пути</div><div class="font-mono text-lg tabular-nums">{{ duration(trip.movingMs) }}</div></div>
-      <div><div class="label">стоянка</div><div class="font-mono text-lg tabular-nums">{{ duration(trip.stoppedMs) }}</div></div>
-      <div><div class="label">топливо, л</div><div class="font-mono text-lg tabular-nums">{{ trip.fuelL > 0 ? num(trip.fuelL, 1) : '—' }}</div></div>
+      <div><div class="label">в пути</div><div class="font-mono text-sm tabular-nums leading-7">{{ span(trip.movingMs) }}</div></div>
+      <div><div class="label">стоянка</div><div class="font-mono text-sm tabular-nums leading-7">{{ span(trip.stoppedMs) }}</div></div>
+      <div><div class="label">литров</div><div class="font-mono text-lg tabular-nums">{{ liters(trip.fuelL) }}</div></div>
       <div><div class="label">₽</div><div class="font-mono text-lg tabular-nums">{{ num(cost, 0) }}</div></div>
     </div>
 

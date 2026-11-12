@@ -14,7 +14,7 @@ const { garage, car, setOil } = useGarage()
 const firstRun = !prefs.onboarded
 type Step = 'connect' | 'context' | 'oil' | 'done'
 const steps: Step[] = firstRun ? ['connect', 'context', 'oil', 'done'] : ['connect', 'context']
-const stepNames: Record<Step, string> = { connect: 'Подключение', context: 'Машина', oil: 'Масло', done: 'Готово' }
+const stepNames: Record<Step, string> = { connect: 'Подключение', context: 'Что делали', oil: 'Масло', done: 'Готово' }
 const step = ref(0)
 const current = computed(() => steps[step.value])
 const last = computed(() => step.value === steps.length - 1)

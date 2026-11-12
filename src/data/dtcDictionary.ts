@@ -136,9 +136,15 @@ export function findDtcs(query: string, limit = 60): DtcSearchResult {
   if (!words.length) return { items: [], total: 0 }
   const first: string[] = []
   const rest: string[] = []
+  // Короткое число («форсунка 3») — это номер цилиндра/датчика в описании, а не кусок кода P0213.
+  const tests = words.map((w) => {
+    if (!/^\d{1,2}$/.test(w)) return (lc: string, text: string) => lc.includes(w) || text.includes(w)
+    const re = new RegExp(`(^|\\D)${w}(\\D|$)`)
+    return (_lc: string, text: string) => re.test(text)
+  })
   for (const { code, text } of SEARCH_INDEX) {
     const lc = code.toLowerCase()
-    if (!words.every((w) => lc.includes(w) || text.includes(w))) continue
+    if (!tests.every((t) => t(lc, text))) continue
     if (lc.startsWith(words[0])) first.push(code)
     else rest.push(code)
   }

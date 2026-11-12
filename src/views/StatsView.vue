@@ -4,7 +4,7 @@ import DailyChart, { type DayPoint } from '@/components/DailyChart.vue'
 import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { tripAvgSpeed, tripConsumption, type Trip } from '@/services/TripRecorder'
-import { dateTime, dayKey, duration, int, num, time } from '@/utils/format'
+import { dateTime, dayKey, int, liters, num, span, time } from '@/utils/format'
 
 const { garage, clearTrips, deleteTrip } = useGarage()
 const { tripLive, tripActive, session, prefs } = useVehicle()
@@ -70,14 +70,14 @@ function wipe(): void {
         <div><div class="label">Расстояние</div><div class="tile-value">{{ num(total.km, 1) }} <span class="tile-unit">км</span></div></div>
         <div><div class="label">Поездок</div><div class="tile-value">{{ trips.length }}</div></div>
         <div><div class="label">Расход</div><div class="tile-value">{{ num(total.l100, 1) }} <span class="tile-unit">л/100</span></div></div>
-        <div><div class="label">Топливо</div><div class="tile-value">{{ total.l > 0 ? num(total.l, 1) : '—' }} <span class="tile-unit">л</span></div></div>
+        <div><div class="label">Топливо</div><div class="tile-value">{{ liters(total.l) }} <span class="tile-unit">л</span></div></div>
         <div><div class="label">Стоимость</div><div class="tile-value">{{ int(total.cost) }} <span class="tile-unit">₽</span></div></div>
-        <div><div class="label">Ср. / макс. скорость</div><div class="tile-value">{{ num(total.avg, 0) }} <span class="tile-unit">/ {{ num(total.max, 0) }} км/ч</span></div></div>
+        <div><div class="label">Ср. / макс. км/ч</div><div class="tile-value">{{ num(total.avg, 0) }} <span class="tile-unit">/ {{ num(total.max, 0) }}</span></div></div>
         <div class="col-span-2 !p-0">
           <div class="grid grid-cols-3 gap-px bg-night-600">
-            <div class="bg-night-800 p-3"><div class="label">Всего</div><div class="font-mono text-lg font-semibold tabular-nums">{{ duration(total.mv + total.st) }}</div></div>
-            <div class="bg-night-800 p-3"><div class="label">В пути</div><div class="font-mono text-lg font-semibold tabular-nums">{{ duration(total.mv) }}</div></div>
-            <div class="bg-night-800 p-3"><div class="label">Стоянка</div><div class="font-mono text-lg font-semibold tabular-nums">{{ duration(total.st) }}</div></div>
+            <div class="bg-night-800 p-3"><div class="label">Всего</div><div class="font-mono text-base font-semibold tabular-nums">{{ span(total.mv + total.st) }}</div></div>
+            <div class="bg-night-800 p-3"><div class="label">В пути</div><div class="font-mono text-base font-semibold tabular-nums">{{ span(total.mv) }}</div></div>
+            <div class="bg-night-800 p-3"><div class="label">Стоянка</div><div class="font-mono text-base font-semibold tabular-nums">{{ span(total.st) }}</div></div>
           </div>
         </div>
       </div>
@@ -88,7 +88,7 @@ function wipe(): void {
         <div class="mb-2 flex items-baseline justify-between gap-2">
           <span class="font-mono text-sm">{{ dateTime(t.start) }}<template v-if="t.id !== 'live'"> – {{ time(t.end) }}</template></span>
           <span v-if="t.id === 'live'" class="label text-ok">идёт</span>
-          <span v-else class="font-mono text-xs muted">{{ duration(t.end - t.start) }}</span>
+          <span v-else class="font-mono text-xs muted">{{ span(t.end - t.start) }}</span>
         </div>
         <dl class="grid grid-cols-4 gap-2 text-center">
           <div><dt class="label">км</dt><dd class="font-mono text-lg tabular-nums">{{ num(t.distanceKm, 1) }}</dd></div>

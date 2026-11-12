@@ -5,7 +5,7 @@ import OilGauge from '@/components/OilGauge.vue'
 import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { Ema, fuelLitersPer100Km, fuelLitersPerHour } from '@/services/FuelCalculator'
-import { duration, num } from '@/utils/format'
+import { liters, num, span } from '@/utils/format'
 import type { Level } from '@/types'
 
 const { snapshot, pollMode, isConnected, status, prefs, ecuSilent, tripLive, milOn, gpsState, gpsFix, gpsError, tripActive, endTrip, startGps, openGpsSettings } = useVehicle()
@@ -123,7 +123,7 @@ const gpsText = computed(() => {
 
     <div class="card p-3">
       <div class="mb-2 flex items-center justify-between gap-2">
-        <span class="label">Текущая поездка<span v-if="tripActive" class="text-ok"> · идёт запись</span></span>
+        <span class="label">Поездка<span v-if="tripActive" class="text-ok"> · идёт запись</span></span>
         <span class="shrink-0 font-mono text-[11px] muted">GPS: {{ gpsText }}</span>
       </div>
       <div v-if="gpsState === 'denied' || gpsState === 'error'" class="mb-2 border border-warn p-2 text-xs">
@@ -135,10 +135,10 @@ const gpsText = computed(() => {
       </div>
       <dl v-if="tripActive" class="grid grid-cols-3 gap-x-2 gap-y-3 text-center">
         <div><dt class="label">км</dt><dd class="font-mono text-lg tabular-nums">{{ num(trip.km, 1) }}</dd></div>
-        <div><dt class="label">время</dt><dd class="font-mono text-lg tabular-nums">{{ duration(trip.time) }}</dd></div>
+        <div><dt class="label">время</dt><dd class="font-mono text-lg tabular-nums">{{ span(trip.time) }}</dd></div>
         <div><dt class="label">ср. км/ч</dt><dd class="font-mono text-lg tabular-nums">{{ num(trip.avg, 0) }}</dd></div>
         <div><dt class="label">л/100</dt><dd class="font-mono text-lg tabular-nums">{{ num(trip.l100, 1) }}</dd></div>
-        <div><dt class="label">топливо, л</dt><dd class="font-mono text-lg tabular-nums">{{ num(trip.fuel, 2) }}</dd></div>
+        <div><dt class="label">литров</dt><dd class="font-mono text-lg tabular-nums">{{ liters(trip.fuel) }}</dd></div>
         <div><dt class="label">₽</dt><dd class="font-mono text-lg tabular-nums">{{ num(trip.cost, 0) }}</dd></div>
       </dl>
       <p v-else class="text-sm muted">Запись начнётся сама, как только заведётся двигатель или машина тронется.</p>
