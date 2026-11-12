@@ -54,9 +54,21 @@ const form = reactive({ name: '', date: todayISO(), since: 0, interval: 10000, m
 const editRow = computed(() => rows.value.find((r) => r.id === itemEdit.value))
 function openItem(id: string | 'new'): void {
   itemEdit.value = id
-  if (id === 'new') { Object.assign(form, { name: '', date: todayISO(), since: 0, interval: 10000, months: '' }); return }
+  if (id === 'new') { Object.assign(form, { name: '', date: todayISO(), since: 0, interval: 10000, months: '' }); syncOdoFromSince(); return }
   const r = rows.value.find((x) => x.id === id)
   if (r) Object.assign(form, { name: r.name, date: r.dateISO ?? todayISO(), since: Math.round(r.sinceKm), interval: r.intervalKm, months: r.months && id !== 'oil' ? r.months : '' })
+  syncOdoFromSince()
+}
+// Пробег при установке: связан с «Пройдено с замены» через текущий одометр
+const odoAt = ref<number | ''>('')
+const hasOdo = computed(() => currentOdometer(car()) != null)
+function syncOdoFromSince(): void {
+  const o = currentOdometer(car())
+  odoAt.value = o != null && typeof form.since === 'number' ? Math.max(0, Math.round(o - form.since)) : ''
+}
+function syncSinceFromOdo(): void {
+  const o = currentOdometer(car())
+  if (o != null && typeof odoAt.value === 'number') form.since = Math.max(0, Math.round(o - odoAt.value))
 }
 const itemProblem = computed(() => {
   if (itemEdit.value === 'new' && !form.name.trim()) return 'Введите название'
@@ -195,7 +207,8 @@ void itemStatus
       <div class="card overflow-hidden">
         <label v-if="itemEdit === 'new'" class="row"><span class="row-title">Название</span><input v-model="form.name" class="min-w-0 flex-1 bg-transparent text-right text-sm outline-none placeholder:text-faint" placeholder="Например, шаровые"></label>
         <label class="row"><span class="row-title">Дата последней замены</span><input v-model="form.date" type="date" :max="todayISO()" class="bg-transparent text-right text-sm font-medium text-accent outline-none"></label>
-        <label class="row"><span class="row-title">Пройдено с замены, км</span><input v-model.number="form.since" type="number" min="0" inputmode="numeric" class="w-24 bg-transparent text-right text-sm font-medium text-accent outline-none"></label>
+        <label v-if="hasOdo" class="row"><span class="row-title">Одометр при установке, км</span><input v-model.number="odoAt" type="number" min="0" inputmode="numeric" class="w-28 bg-transparent text-right text-sm font-medium text-accent outline-none" placeholder="с приборки" @input="syncSinceFromOdo"></label>
+        <label class="row"><span class="row-title">Пройдено с замены, км</span><input v-model.number="form.since" type="number" min="0" inputmode="numeric" class="w-24 bg-transparent text-right text-sm font-medium text-accent outline-none" @input="syncOdoFromSince"></label>
         <label class="row"><span class="row-title">Интервал замены, км</span><input v-model.number="form.interval" type="number" min="500" step="500" inputmode="numeric" class="w-24 bg-transparent text-right text-sm font-medium text-accent outline-none"></label>
         <label v-if="itemEdit !== 'oil'" class="row"><span class="row-title">Срок, месяцев <span class="row-sub">необязательно</span></span><input v-model.number="form.months" type="number" min="1" inputmode="numeric" class="w-20 bg-transparent text-right text-sm font-medium text-accent outline-none" placeholder="—"></label>
       </div>
