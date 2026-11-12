@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
+import BrandLogo from '@/components/BrandLogo.vue'
 import Sheet from '@/components/Sheet.vue'
 import { BRANDS, CATALOG, FUEL_TYPES } from '@/data/carCatalog'
 import { CAR_PRESETS, type Car } from '@/services/Cars'
 import { num } from '@/utils/format'
 
+/** forced — обязательный шаг первого запуска: закрыть окно на первом шаге нельзя. */
+const props = defineProps<{ forced?: boolean }>()
 const emit = defineEmits<{ close: []; done: [Partial<Car>] }>()
 const step = ref(0)
 const q = ref('')
@@ -16,8 +19,6 @@ const cc = ref(1600)
 const manual = ref(false)
 const TITLES = ['Выберите производителя', 'Выберите модель', 'Выберите тип топлива', 'Рабочий объём двигателя']
 
-const colors = ['#e8542f', '#2f7be8', '#16a085', '#8e44ad', '#d68910', '#c0392b', '#2471a3', '#117a65']
-const hue = (s: string): string => colors[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length]
 const brands = computed(() => BRANDS.filter((b) => b.toLowerCase().includes(q.value.trim().toLowerCase())))
 const models = computed(() => (CATALOG[brand.value] ?? []).filter((m) => m.toLowerCase().includes(q.value.trim().toLowerCase())))
 const typed = computed(() => q.value.trim())
@@ -36,7 +37,7 @@ function finish(): void {
   const { label: _l, ...preset } = p ?? { label: '' }
   emit('done', { ...preset, make: brand.value, model: model.value, name: p?.name ?? `${brand.value} ${model.value}`.trim(), fuel: fuel.value, displacementL: cc.value / 1000 })
 }
-function back(): void { q.value = ''; if (step.value > 0) step.value--; else emit('close') }
+function back(): void { q.value = ''; if (step.value > 0) step.value--; else if (!props.forced) emit('close') }
 const size = computed(() => (cc.value < 1000 ? 'Маленький' : cc.value <= 1500 ? 'Малый' : cc.value <= 2500 ? 'Средний' : cc.value <= 4000 ? 'Большой' : 'Очень большой'))
 </script>
 
@@ -50,10 +51,11 @@ const size = computed(() => (cc.value < 1000 ? 'Маленький' : cc.value <
       <div v-if="step === 0" class="grid grid-cols-4 gap-x-2 gap-y-4">
         <button class="flex flex-col items-center gap-1.5 text-xs text-mute" @click="manual = true; pickBrand(typed || 'Своя')"><span class="flex h-14 w-14 items-center justify-center rounded-full border border-night-600 bg-night-800 text-accent"><AppIcon name="plus" /></span>Ручной ввод</button>
         <button v-for="b in brands" :key="b" class="flex flex-col items-center gap-1.5 text-center text-xs text-soft" @click="pickBrand(b)">
-          <span class="flex h-14 w-14 items-center justify-center rounded-full text-lg font-bold text-white shadow-card" :style="{ background: hue(b) }">{{ b.slice(0, 2).toUpperCase() }}</span><span class="w-full truncate">{{ b }}</span>
+          <BrandLogo :make="b" :size="56" /><span class="w-full truncate">{{ b }}</span>
         </button>
       </div>
-      <div v-else class="card overflow-hidden">
+      <div v-if="step === 1" class="mb-3 flex items-center gap-3"><BrandLogo :make="brand" :size="44" /><span class="text-lg font-bold">{{ brand }}</span></div>
+      <div v-if="step === 1" class="card overflow-hidden">
         <button v-if="typed && !models.includes(typed)" class="row text-accent" @click="pickModel(typed)"><span class="row-title !text-accent">Использовать «{{ typed }}»</span><AppIcon name="plus" :size="18" /></button>
         <button v-for="m in models" :key="m" class="row" @click="pickModel(m)"><span class="row-title">{{ m }}</span><AppIcon name="chevron" :size="18" class="text-faint" /></button>
         <p v-if="!models.length && !typed" class="p-4 text-sm text-mute">Моделей нет в справочнике — введите название выше.</p>

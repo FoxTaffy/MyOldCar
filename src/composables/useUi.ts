@@ -11,6 +11,8 @@ export const MENU: MenuDef[] = [
   { id: 'diag', to: '/diagnostics', title: 'Диагностика автомобиля', icon: 'carsearch' },
   { id: 'dash', to: '/dashboard', title: 'Приборная доска', icon: 'gauge' },
   { id: 'trips', to: '/stats', title: 'История вождения', icon: 'route' },
+  { id: 'routes', to: '/routes', title: 'Карта поездок', icon: 'pin' },
+  { id: 'wash', to: '/wash', title: 'Умная мойка', icon: 'shower' },
   { id: 'style', to: '/style', title: 'Стиль вождения', icon: 'wheel' },
   { id: 'journal', to: '/service', title: 'Журнал обслуживания', icon: 'pump' },
   { id: 'fuel', to: '/fuel', title: 'Топливная эффективность', icon: 'leaf' },

@@ -10,6 +10,7 @@ import { compileFormula, type Formula } from '@/services/Formula'
 import type { EcuStatus } from '@/services/EcuStatus'
 import { Notifier } from '@/services/Notifier'
 import type { SensorDef } from '@/data/sensors'
+import type { MotionResult } from '@/services/MotionState'
 import { WarmupTracker, type WarmupInfo } from '@/services/WarmupTracker'
 import { useGarage } from '@/composables/useGarage'
 import { useUi } from '@/composables/useUi'
@@ -99,6 +100,14 @@ const milOn = ref(false)
 /** Идёт ли запись поездки. */
 const tripActive = ref(false)
 const IDLE_CHECK_MS = 30_000
+/** Текущее состояние «едем / стоим» (по скорости и оборотам). */
+const motion = ref<MotionResult | null>(null)
+/** Автоподключение сдалось (адаптера нет рядом / не отвечает): ждём, пока пользователь нажмёт «Подключить» сам. */
+const awaitingManual = ref(false)
+/** Сколько раз подряд пытались вернуть оборвавшуюся связь. */
+let lostRetries = 0
+/** После обрыва связи пробуем вернуть её столько раз, потом ждём ручного нажатия. */
+const MAX_LOST_RETRIES = 2
 
 /** Прогрев двигателя после подключения: уведомление, когда можно ехать. */
 const warmup = new WarmupTracker()
@@ -224,6 +233,7 @@ function trackTrip(s: SensorSnapshot): void {
   }
   history.value = h
   addDistance(session.feedObd(s.timestamp, s, vals))
+  motion.value = session.motion
   refreshTripLive()
   if (via.value === 'mock') mockGps(s)
 }
@@ -265,6 +275,7 @@ session.onMil = (ev) => {
 gps.onFix = (fix) => {
   gpsFix.value = fix
   addDistance(session.feedGps(fix.t, fix))
+  motion.value = session.motion
   refreshTripLive()
 }
 gps.onState = (st, msg) => { gpsState.value = st; gpsError.value = msg ?? null }
@@ -341,9 +352,19 @@ function clearReconnect(): void {
   reconnectTimer = null
 }
 
-function scheduleReconnect(): void {
+/**
+ * Повторная попытка только после обрыва уже работавшей связи, и то ограниченное число раз.
+ * Если адаптера нет рядом (далеко от машины, выключен, не тот ЭБУ) — не донимаем систему бесконечными попытками:
+ * ждём, пока пользователь сам нажмёт «Подключить».
+ */
+function scheduleReconnect(afterLoss: boolean): void {
   clearReconnect()
   if (manualStop || !prefs.autoConnect || prefs.mode === 'mock' || !prefs.onboarded) return
+  if (!afterLoss || ++lostRetries > MAX_LOST_RETRIES) {
+    awaitingManual.value = true
+    lostRetries = 0
+    return
+  }
   reconnectTimer = setTimeout(() => { void connect(true) }, RECONNECT_MS)
 }
 
@@ -363,12 +384,13 @@ function handleLost(msg: string): void {
   clearReadings()
   pollError = false
   error.value = msg
-  scheduleReconnect()
+  scheduleReconnect(true)
 }
 
 async function connect(auto = false): Promise<void> {
   if (status.value !== 'disconnected') return
-  if (!auto) manualStop = false
+  if (!auto) { manualStop = false; lostRetries = 0 }
+  awaitingManual.value = false
   clearReconnect()
   const token = ++connectToken
   status.value = 'connecting'
@@ -389,6 +411,7 @@ async function connect(auto = false): Promise<void> {
       note.value = null
       via.value = kind
       status.value = 'connected'
+      lostRetries = 0
       // Реальная поездка (по GPS) не должна продолжиться как демо и наоборот.
       if (session.active && session.demo !== (kind === 'mock')) endTrip()
       session.demo = kind === 'mock'
@@ -409,7 +432,9 @@ async function connect(auto = false): Promise<void> {
   error.value = errors.join(' · ')
   note.value = null
   status.value = 'disconnected'
-  scheduleReconnect()
+  // Автоматическая попытка не удалась — сразу переходим в режим «ждём ручного подключения».
+  // Повторяем только то, что началось с обрыва связи (см. lostRetries).
+  scheduleReconnect(auto && lostRetries > 0)
 }
 
 /** Отключиться или отменить идущую попытку подключения. */
@@ -448,7 +473,7 @@ function autoStart(): void {
     // Вернулись в приложение — пробуем сразу, не ждём таймер.
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) void idleCheck()
-      if (!document.hidden && status.value === 'disconnected' && !manualStop && prefs.autoConnect && prefs.onboarded && prefs.mode !== 'mock') {
+      if (!document.hidden && status.value === 'disconnected' && !manualStop && !awaitingManual.value && prefs.autoConnect && prefs.onboarded && prefs.mode !== 'mock') {
         void connect(true)
       }
     })
@@ -463,7 +488,7 @@ const ecuSilent = computed(() => {
 export function useVehicle() {
   return {
     prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, gpsState, gpsFix, gpsError, milOn, tripActive, protocolName, warmupInfo,
-    values, history, connectedAt, ecuStatus,
+    values, history, connectedAt, ecuStatus, motion, awaitingManual,
     liveTrip: () => session.snapshot(),
     session,
     isConnected: computed(() => status.value === 'connected'),

@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { onBeforeUnmount } from 'vue'
+import { pushBack } from '@/services/BackHandler'
 import AppIcon from './AppIcon.vue'
 
 /** Нижняя панель/полноэкранное окно поверх страницы. */
 defineProps<{ title?: string; full?: boolean }>()
-defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: [] }>()
+// Системная кнопка «Назад» закрывает окно, а не уходит с экрана.
+const off = pushBack(() => emit('close'))
+onBeforeUnmount(off)
 </script>
 
 <template>

@@ -40,3 +40,44 @@ export const FUEL_TYPES: { id: string; label: string; car: 'АИ-92' | 'АИ-95'
   { id: 'ДТ', label: 'Дизель', car: 'ДТ' },
   { id: 'Газ', label: 'Газ (LPG / метан)', car: 'Газ' },
 ]
+
+/* Расширение справочника: ещё популярные марки (добавлены после первой версии списка). */
+Object.assign(CATALOG, {
+  Volvo: ['S40', 'S60', 'S80', 'V40', 'XC60', 'XC90', '850', '440'],
+  Fiat: ['Albea', 'Doblo', 'Punto', 'Panda', '500'],
+  Jeep: ['Grand Cherokee', 'Wrangler', 'Compass'],
+  Haval: ['H6', 'Jolion', 'F7', 'H9'],
+  SsangYong: ['Kyron', 'Actyon', 'Rexton'],
+  'Land Rover': ['Defender', 'Discovery', 'Freelander', 'Range Rover'],
+  Infiniti: ['FX', 'G', 'QX'],
+  SEAT: ['Ibiza', 'Leon', 'Cordoba'],
+  Lifan: ['Solano', 'X60', 'Breez'],
+  Dodge: ['Caliber', 'Charger', 'Ram'],
+  Porsche: ['Cayenne', 'Macan', '911'],
+  Tesla: ['Model 3', 'Model S', 'Model Y'],
+  MINI: ['Cooper', 'Countryman'],
+  Jaguar: ['XF', 'XJ', 'S-Type'],
+  'Alfa Romeo': ['147', '156', 'Giulietta'],
+  Saab: ['9-3', '9-5'],
+  Daihatsu: ['Terios', 'Sirion'],
+  Acura: ['MDX', 'TL', 'RDX'],
+})
+// Пересобираем список марок: российские и самые популярные — первыми.
+export const BRANDS_ORDERED: string[] = [...new Set([...['LADA', 'ВАЗ', 'ГАЗ', 'УАЗ', 'Москвич', 'Kia', 'Hyundai', 'Toyota', 'Renault', 'Skoda', 'Volkswagen', 'Nissan', 'Chevrolet', 'Ford'], ...Object.keys(CATALOG)])]
+BRANDS.splice(0, BRANDS.length, ...BRANDS_ORDERED)
+
+/** Файлы логотипов в public/logos (лежат в приложении — работают без интернета). */
+const LOGO_SLUGS: Record<string, string> = {
+  lada: 'lada', 'ваз': 'vaz', 'газ': 'gaz', 'уаз': 'uaz', daewoo: 'daewoo', chevrolet: 'chevrolet', ford: 'ford', honda: 'honda', hyundai: 'hyundai',
+  kia: 'kia', mazda: 'mazda', mitsubishi: 'mitsubishi', nissan: 'nissan', opel: 'opel', renault: 'renault', skoda: 'skoda', toyota: 'toyota',
+  volkswagen: 'volkswagen', audi: 'audi', bmw: 'bmw', 'mercedes-benz': 'mercedes-benz', mercedes: 'mercedes-benz', peugeot: 'peugeot', citroen: 'citroen',
+  suzuki: 'suzuki', subaru: 'subaru', lexus: 'lexus', chery: 'chery', geely: 'geely', volvo: 'volvo', fiat: 'fiat', jeep: 'jeep', haval: 'haval',
+  ssangyong: 'ssangyong', 'land rover': 'land-rover', infiniti: 'infiniti', seat: 'seat', lifan: 'lifan', dodge: 'dodge', porsche: 'porsche',
+  tesla: 'tesla', mini: 'mini', jaguar: 'jaguar', 'alfa romeo': 'alfa-romeo', saab: 'saab', daihatsu: 'daihatsu', acura: 'acura',
+}
+
+/** Путь к логотипу марки или null, если такого файла нет. */
+export function brandLogo(make: string): string | null {
+  const slug = LOGO_SLUGS[make.trim().toLowerCase()]
+  return slug ? `${import.meta.env.BASE_URL}logos/${slug}.png` : null
+}

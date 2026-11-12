@@ -39,6 +39,8 @@ export interface Car {
   services: ServiceItem[]
   /** Последнее чтение ошибок: когда и сколько кодов. */
   lastDiag: { at: number; count: number } | null
+  /** Пустой профиль нового пользователя: пока не заполнен, приложение просит добавить машину. */
+  placeholder?: boolean
 }
 
 export type CarPreset = Partial<Omit<Car, 'id' | 'oil' | 'trackedTotalKm' | 'odometerKm' | 'odometerTrackedAt' | 'purchaseISO' | 'purchaseKm' | 'services' | 'lastDiag'>> & { label: string }

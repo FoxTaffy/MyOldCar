@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
+import BrandLogo from '@/components/BrandLogo.vue'
 import { useGarage } from '@/composables/useGarage'
 import { useMyTrips } from '@/composables/useMyTrips'
 import { useUi } from '@/composables/useUi'
+import { useWash } from '@/composables/useWash'
 import { useVehicle } from '@/composables/useVehicle'
 import { carTitle } from '@/services/Cars'
 import { computeStat } from '@/services/HomeStats'
+import { MOTION_TEXT } from '@/services/MotionState'
 import { READY_C } from '@/services/WarmupTracker'
 import { num } from '@/utils/format'
 
@@ -16,6 +19,8 @@ const v = useVehicle()
 const { garage, car, serviceItems, oil } = useGarage()
 const { since } = useMyTrips()
 const { ui, menu } = useUi()
+const wash = useWash()
+onMounted(() => { void wash.refresh() })
 v.pollMode.value = 'normal'
 
 const stats = computed(() => ui.homeStats.slice(0, 3).map((id) => computeStat(id, since(30), car(), garage.fuelPrice, ui.currency)))
@@ -48,7 +53,7 @@ const go = (to: string): void => { void router.push(to) }
     <div class="card overflow-hidden">
       <div class="flex items-center gap-3 px-4 py-3">
         <button class="flex min-w-0 flex-1 items-center gap-3 text-left" @click="go('/garage')">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent"><AppIcon name="car" /></span>
+          <BrandLogo :make="car().make" :size="40" />
           <span class="min-w-0"><span class="block truncate text-base font-bold">{{ carTitle(car()) }}</span><span class="block truncate text-xs text-mute">{{ car().engineCode || car().fuel || 'Нажмите, чтобы изменить' }}</span></span>
         </button>
         <button v-if="v.status.value === 'disconnected'" class="shrink-0 rounded-full border border-accent px-4 py-1.5 text-sm font-semibold text-accent active:bg-accent-soft" @click="v.connect()">Соединение</button>
@@ -63,8 +68,14 @@ const go = (to: string): void => { void router.push(to) }
       </button>
     </div>
 
+    <!-- Автоподключение остановилось: ждём ручного нажатия -->
+    <div v-if="v.awaitingManual.value && v.status.value === 'disconnected'" class="flex items-center gap-3 rounded-2xl border border-warn/40 bg-warn/10 p-3">
+      <span class="min-w-0 flex-1 text-sm"><b class="text-warn">Адаптер не найден.</b> <span class="text-soft">Поиск остановлен, чтобы не разряжать телефон. Подключитесь, когда будете рядом с машиной.</span></span>
+      <button class="btn btn-sm shrink-0" @click="v.connect()">Подключить</button>
+    </div>
+
     <!-- Живые показания или призыв подключиться -->
-    <button v-if="!v.isConnected.value && v.status.value !== 'connecting'" class="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-br from-[#3b2a8f] to-[#1c1450] border border-white/10 p-4 text-left text-white shadow-card active:opacity-90" @click="go('/connection')">
+    <button v-else-if="!v.isConnected.value && v.status.value !== 'connecting'" class="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-br from-[#3b2a8f] to-[#1c1450] border border-white/10 p-4 text-left text-white shadow-card active:opacity-90" @click="go('/connection')">
       <span class="min-w-0 flex-1"><span class="block text-xs text-white/70">Сначала нужно подключить сканер</span><span class="mt-0.5 block text-base font-bold">Перейти к подключению сканера ›</span></span>
       <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15"><AppIcon name="bluetooth" :size="28" /></span>
     </button>
@@ -77,7 +88,11 @@ const go = (to: string): void => { void router.push(to) }
         <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-night-700"><div class="h-full rounded-full bg-warn transition-all" :style="{ width: Math.round(v.warmupInfo.value.progress * 100) + '%' }" /></div>
       </template>
       <p v-else-if="v.warmupInfo.value.state === 'ready' && (v.snapshot.value?.coolantTempC ?? 0) >= READY_C" class="mt-2 text-center text-xs font-medium text-ok">Двигатель прогрет — можно ехать</p>
-      <p v-if="v.tripActive.value" class="mt-2 text-center text-xs font-medium text-ok">● Идёт запись поездки</p>
+      <p v-if="v.motion.value" class="mt-2 text-center text-xs font-medium" :class="v.motion.value.kind === 'driving' ? 'text-ok' : 'text-mute'">
+        {{ MOTION_TEXT[v.motion.value.kind] }}<template v-if="v.motion.value.gear"> · {{ v.motion.value.gear }}-я передача</template>
+        <template v-if="v.motion.value.obdSpeedSuspect"> · датчик скорости OBD врёт, беру GPS</template>
+      </p>
+      <p v-if="v.tripActive.value" class="mt-1 text-center text-xs font-medium text-ok">● Идёт запись поездки</p>
     </div>
 
     <RouterLink v-if="v.milOn.value" to="/diagnostics" class="flex items-center gap-3 rounded-2xl border border-bad/40 bg-bad/10 p-3 text-bad">
@@ -88,6 +103,11 @@ const go = (to: string): void => { void router.push(to) }
     <RouterLink v-if="due.length" to="/service" class="flex items-center gap-3 rounded-2xl border border-warn/40 bg-warn/10 p-3">
       <AppIcon name="wrench" class="shrink-0 text-warn" />
       <span class="min-w-0 text-sm"><b class="text-warn">Пора обслужить:</b> <span class="text-soft">{{ due.slice(0, 3).map((d) => d.name.toLowerCase()).join(', ') }}<template v-if="due.length > 3"> и ещё {{ due.length - 3 }}</template></span></span>
+    </RouterLink>
+
+    <RouterLink v-if="wash.advice.value.level === 'now' || wash.advice.value.level === 'soon' || wash.advice.value.level === 'frost' || wash.advice.value.level === 'wait'" to="/wash" class="flex items-center gap-3 rounded-2xl border border-accent/40 bg-accent-soft p-3">
+      <AppIcon name="shower" class="shrink-0 text-accent" />
+      <span class="min-w-0 text-sm"><b class="text-accent">{{ wash.advice.value.title }}.</b> <span class="text-soft">{{ wash.advice.value.reasons[wash.advice.value.reasons.length - 1] }}</span></span>
     </RouterLink>
 
     <!-- Плитки разделов -->

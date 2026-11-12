@@ -3,6 +3,7 @@ import { fuelLitersPer100Km } from './FuelCalculator'
 import { haversineKm, type TrackPoint } from './TripAnalysis'
 import type { SensorDef } from '@/data/sensors'
 import { analyzeStyle } from './DrivingStyle'
+import { classifyMotion, type MotionResult } from './MotionState'
 import { MAX_GPS_GAP_MS, TripRecorder, type Trip, type TripEvent } from './TripRecorder'
 
 /** Если ни один датчик (OBD и GPS) 30 минут не показывает движения/работы двигателя — поездка завершается и сохраняется. */
@@ -17,8 +18,6 @@ const GPS_NOISE_KMH = 2
 const GPS_MAX_KMH = 250
 /** Точность GPS хуже — точку не используем. */
 const GPS_MAX_ACCURACY_M = 60
-/** OBD показывает 0, а GPS — уверенное движение: датчик скорости не работает (или машину везут), верим GPS. */
-const GPS_OVERRIDE_KMH = 10
 const MAX_POINTS = 1200
 
 export interface GpsFix {
@@ -57,6 +56,8 @@ export class TripSession {
   private sources = new Set<'obd' | 'gps'>()
   /** Кто-то должен считать коды при загорании лампы. */
   onMil?: (ev: TripEvent) => void
+  /** Последнее решение «едем / стоим / накат» (по скорости и оборотам). */
+  motion: MotionResult | null = null
   /** Демо-режим: новые поездки помечаются как демонстрационные. */
   demo = false
   /** Порог превышения скорости для оценки стиля вождения, км/ч. */
@@ -150,7 +151,10 @@ export class TripSession {
     const gps = this.gpsNow(now)
     const gpsSpeed = gps?.speedKmh != null ? (gps.speedKmh < GPS_NOISE_KMH ? 0 : gps.speedKmh) : null
     const obdSpeed = obd?.speedKmh ?? null
-    const speed = obdSpeed != null && !(obdSpeed === 0 && (gpsSpeed ?? 0) >= GPS_OVERRIDE_KMH) ? obdSpeed : gpsSpeed
+    // «Едем или стоим» решаем по скорости и оборотам вместе: GPS на стоянке дрейфует, а датчик скорости может врать.
+    const motion = classifyMotion({ obdSpeed, rpm: obd?.rpm ?? null, gpsSpeed })
+    this.motion = motion
+    const speed: number | null = obd == null && gps == null ? null : motion.speed
     const engineOn = (obd?.rpm ?? 0) > 0
     const active = engineOn || (obdSpeed ?? 0) > 0 || (gpsSpeed ?? 0) > 0
     if (active) this.lastActivity = Math.max(this.lastActivity, now)

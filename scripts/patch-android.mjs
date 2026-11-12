@@ -58,17 +58,24 @@ console.log('android: манифест и иконка уведомления о
 // Ключ в репозиторий не кладём: CI восстанавливает его из секретов GitHub и передаёт путь/пароли через env.
 const gradlePath = join(root, 'android/app/build.gradle')
 let gradle = readFileSync(gradlePath, 'utf8')
-const ks = process.env.KEYSTORE_PATH
-if (ks && !gradle.includes('KEYSTORE_PATH')) {
+// Секреты репозитория (если заданы) главнее; иначе — постоянный ключ из репозитория, чтобы новые сборки
+// всегда устанавливались ПОВЕРХ предыдущих (обновление без удаления приложения).
+const fallback = join(root, 'scripts/myoldcar-debug.keystore')
+const useFallback = !process.env.KEYSTORE_PATH && existsSync(fallback)
+const ks = useFallback ? fallback : process.env.KEYSTORE_PATH
+// В gradle значения подставляем прямо в файл для запасного ключа (env у шага сборки при пустых секретах пустой).
+const gv = (name, literal) => (useFallback ? JSON.stringify(literal) : `System.getenv("${name}")`)
+if (ks && !gradle.includes('myoldcar-signing')) {
   gradle = gradle.replace(
     /android\s*\{/,
     `android {
+    // myoldcar-signing
     signingConfigs {
         debug {
-            storeFile file(System.getenv("KEYSTORE_PATH"))
-            storePassword System.getenv("KEYSTORE_PASSWORD")
-            keyAlias System.getenv("KEY_ALIAS")
-            keyPassword System.getenv("KEY_PASSWORD")
+            storeFile file(${useFallback ? JSON.stringify(ks) : 'System.getenv("KEYSTORE_PATH")'})
+            storePassword ${gv('KEYSTORE_PASSWORD', 'android')}
+            keyAlias ${gv('KEY_ALIAS', 'androiddebugkey')}
+            keyPassword ${gv('KEY_PASSWORD', 'android')}
         }
     }`,
   )
