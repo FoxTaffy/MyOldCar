@@ -22,6 +22,8 @@ export interface PerfOptions {
   slipRpmRise: number
   /** Допустимое изменение скорости в окне, км/ч. */
   slipSpeedDelta: number
+  /** Замер только с места: пока машина не остановилась (скорость < startKmh), отсчёт не начинается. */
+  fromStandstill: boolean
 }
 
 export const DEFAULT_PERF_OPTIONS: PerfOptions = {
@@ -30,6 +32,7 @@ export const DEFAULT_PERF_OPTIONS: PerfOptions = {
   slipWindowMs: 1000,
   slipRpmRise: 600,
   slipSpeedDelta: 1,
+  fromStandstill: true,
 }
 
 /**
@@ -41,6 +44,10 @@ export class PerformanceTimer {
   samples: PerfSample[] = []
   result: PerfResult | null = null
   private t0 = 0
+  /** Видели ли стоящую машину — только после этого разгон считается «с места». */
+  private stood = false
+  /** Сколько попыток сорвалось (остановились, не набрав цель). */
+  aborted = 0
 
   constructor(private readonly opts: PerfOptions = DEFAULT_PERF_OPTIONS) {}
 
@@ -48,6 +55,13 @@ export class PerformanceTimer {
     this.state = 'idle'
     this.samples = []
     this.result = null
+    this.stood = false
+    this.aborted = 0
+  }
+
+  /** Машина едет, а замер нужен с места: ждём полной остановки. */
+  get waitingForStop(): boolean {
+    return this.state === 'idle' && this.opts.fromStandstill && !this.stood
   }
 
   get elapsedMs(): number {
@@ -58,9 +72,20 @@ export class PerformanceTimer {
   feed(nowMs: number, speedKmh: number, rpm: number): PerfState {
     if (this.state === 'finished') return this.state
     if (this.state === 'idle') {
-      if (speedKmh < this.opts.startKmh) return this.state
+      if (speedKmh < this.opts.startKmh) {
+        this.stood = true
+        return this.state
+      }
+      if (this.waitingForStop) return this.state
       this.state = 'running'
       this.t0 = nowMs
+    } else if (speedKmh < this.opts.startKmh) {
+      // Остановились, не набрав цель: попытка сорвана, ждём нового старта с места.
+      this.state = 'idle'
+      this.samples = []
+      this.stood = true
+      this.aborted++
+      return this.state
     }
     this.samples.push({ t: nowMs - this.t0, speedKmh, rpm })
     if (speedKmh >= this.opts.targetKmh) {
@@ -92,7 +117,7 @@ export function analyzeClutchSlip(samples: PerfSample[], o: PerfOptions = DEFAUL
       if (samples[j].t - samples[i].t > o.slipWindowMs) break
       const dRpm = samples[j].rpm - samples[i].rpm
       const dSpeed = samples[j].speedKmh - samples[i].speedKmh
-      // Нужны обороты выше ~2500: на старте (отпускание сцепления) рост без скорости — норма.
+      // Смотрим только после трогания (скорость > 5 км/ч): на старте рост оборотов без скорости — норма.
       if (dRpm >= o.slipRpmRise && dSpeed <= o.slipSpeedDelta && samples[i].speedKmh > 5) {
         return ['Возможна пробуксовка сцепления']
       }

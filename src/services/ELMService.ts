@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core'
 import { TcpSocket } from 'capacitor-tcp-socket'
 import { BleClient, type BleService, type ScanResult } from '@capacitor-community/bluetooth-le'
 import type { ConnectionKind, SensorSnapshot } from '@/types'
@@ -34,10 +35,16 @@ export const DEFAULT_ELM_CONFIG: ElmConfig = { host: '192.168.0.10', port: 35000
 /** Номера протоколов ELM327, актуальные для ВАЗ с ЭБУ М73: К-линия (KWP2000 / ISO 9141) и CAN на новых. */
 export const PROTOCOL_NAMES: Record<string, string> = {
   '0': 'авто',
-  '5': 'ISO 14230-4 (быстрая инициализация)',
-  '4': 'ISO 14230-4 (5-бод)',
+  '1': 'SAE J1850 PWM',
+  '2': 'SAE J1850 VPW',
   '3': 'ISO 9141-2',
+  '4': 'ISO 14230-4 (5-бод)',
+  '5': 'ISO 14230-4 (быстрая инициализация)',
   '6': 'CAN 11 бит / 500 кбит',
+  '7': 'CAN 29 бит / 500 кбит',
+  '8': 'CAN 11 бит / 250 кбит',
+  '9': 'CAN 29 бит / 250 кбит',
+  A: 'SAE J1939 (CAN)',
 }
 
 /** Подмножество API плагина capacitor-tcp-socket, которое нам нужно (вынесено для подмены в тестах). */
@@ -56,6 +63,7 @@ export interface TcpPlugin {
 export class CapacitorTcpTransport implements Transport {
   private client = -1
   private cb: (chunk: string) => void = () => {}
+  private closeCb: () => void = () => {}
   private reading = false
 
   constructor(
@@ -84,6 +92,11 @@ export class CapacitorTcpTransport implements Transport {
         await new Promise((res) => setTimeout(res, 100))
       }
     }
+    // Сокет закрылся сам (адаптер выключили, телефон ушёл из сети Wi-Fi) — сообщаем сразу, а не через таймауты опроса.
+    if (this.reading && this.client === client) {
+      this.reading = false
+      this.closeCb()
+    }
   }
 
   write(data: string): Promise<void> {
@@ -91,6 +104,9 @@ export class CapacitorTcpTransport implements Transport {
   }
   onData(cb: (chunk: string) => void): void {
     this.cb = cb
+  }
+  onClose(cb: () => void): void {
+    this.closeCb = cb
   }
   async close(): Promise<void> {
     this.reading = false
@@ -257,13 +273,17 @@ export class BleTransport implements Transport {
 export class WebSocketTransport implements Transport {
   private ws: WebSocket | null = null
   private cb: (chunk: string) => void = () => {}
+  private closeCb: () => void = () => {}
+  private manual = false
   constructor(private readonly cfg: ElmConfig) {}
 
   connect(): Promise<void> {
+    this.manual = false
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(`ws://${this.cfg.host}:${this.cfg.port}`)
       ws.onopen = () => resolve()
-      ws.onerror = () => reject(new Error('WebSocket: не удалось подключиться'))
+      ws.onerror = () => reject(new Error('В браузере Wi-Fi-адаптер доступен только через мост ws:// — он не отвечает. На телефоне используется прямое TCP-подключение.'))
+      ws.onclose = () => { if (!this.manual) this.closeCb() }
       ws.onmessage = (e) => this.cb(typeof e.data === 'string' ? e.data : '')
       this.ws = ws
     })
@@ -274,7 +294,11 @@ export class WebSocketTransport implements Transport {
   onData(cb: (chunk: string) => void): void {
     this.cb = cb
   }
+  onClose(cb: () => void): void {
+    this.closeCb = cb
+  }
   async close(): Promise<void> {
+    this.manual = true
     this.ws?.close()
   }
 }
@@ -338,10 +362,23 @@ export class MockTransport implements Transport {
       case '0106': return `41 06 ${hex(((this.opts.lowMaf ? 6 : 1) + 100) * 1.28, 1)}`
       case '0107': return `41 07 ${hex(((this.opts.lowMaf ? 9 : 2) + 100) * 1.28, 1)}`
       case '0142': return `41 42 ${hex(14200 + Math.sin(Date.now() / 3000) * 150, 2)}`
-      case '0101': return Date.now() - this.t0 > 20000 ? '41 01 81 07 E5 00' : '41 01 00 07 E5 00' // лампа загорается через 20 с демо
+      case '0101': { // лампа загорается через 20 с демо; младшие 7 бит — число сохранённых кодов
+        const on = Date.now() - this.t0 > 20000
+        return `41 01 ${hex(on ? 0x80 | this.opts.dtcs.length : 0, 1)} 07 E5 00`
+      }
       case '0902': return '014\n0: 49 02 01 58 54 41\n1: 32 31 30 34 30 30 59\n2: 31 32 33 34 35 36 37'
       case '03': return `43 ${this.opts.dtcs.length ? this.opts.dtcs.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
       case '07': return `47 ${this.opts.pending.length ? this.opts.pending.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
+      // Стоп-кадр (режим 02, кадр 00): условия в момент появления первой ошибки — прогретый холостой ход.
+      case '020200': return this.opts.dtcs.length ? `42 02 00 ${encodeDtc(this.opts.dtcs[0])}` : '42 02 00 00 00'
+      case '020C00': return `42 0C 00 ${hex(870 * 4, 2)}`
+      case '020D00': return '42 0D 00 00'
+      case '020500': return `42 05 00 ${hex(88 + 40, 1)}`
+      case '020400': return `42 04 00 ${hex(0.22 * 255, 1)}`
+      case '020600': return `42 06 00 ${hex(107 * 1.28, 1)}`
+      case '020700': return `42 07 00 ${hex(112 * 1.28, 1)}`
+      case '021100': return `42 11 00 ${hex(0.13 * 255, 1)}`
+      case '021000': return `42 10 00 ${hex(190, 2)}`
       default: return 'NO DATA'
     }
   }
@@ -361,22 +398,52 @@ export function encodeDtc(code: string): string {
   return [b1, b2].map((b) => b.toString(16).toUpperCase().padStart(2, '0')).join(' ')
 }
 
-/** Разбор ответа на режим 03 → ['P0171', ...]. Устойчив к переносам строк и «43» в начале каждой строки. */
+/**
+ * Делит ответ адаптера на посылки в виде строк hex-цифр. Многокадровый ответ CAN (ISO-TP:
+ * строка длины «00A», затем кадры «0: 43 04 …», «1: …») склеивается в одну посылку нужной длины.
+ */
+function responseFrames(raw: string): string[] {
+  const hex = (t: string) => t.replace(/[^0-9A-Fa-f]/g, '').toUpperCase()
+  const out: string[] = []
+  let multi: string | null = null
+  let total = 0
+  for (const line of raw.split(/[\r\n]+/).map((l) => l.trim())) {
+    if (!line) continue
+    const frame = /^[0-9A-Fa-f]:\s*(.*)$/.exec(line)
+    if (frame) { multi = (multi ?? '') + hex(frame[1]); continue }
+    if (/^[0-9A-Fa-f]{3}$/.test(line)) { total = parseInt(line, 16); continue }
+    out.push(hex(line))
+  }
+  if (multi != null) out.push(total ? multi.slice(0, total * 2) : multi)
+  return out
+}
+
+function dtcFromWord(word: string): string {
+  const v = parseInt(word, 16)
+  return `${DTC_LETTER[(v >> 14) & 3]}${(v >> 12) & 3}${(v & 0xfff).toString(16).toUpperCase().padStart(3, '0')}`
+}
+
+/**
+ * Разбор ответа на режимы 03/07 → ['P0171', ...]. Понимает оба формата:
+ * К-линия — «43 01 71 00 00 00 00» (пары байт, по строке на каждые 3 кода, допускается слитно);
+ * CAN — «43 02 01 71 03 01» (после заголовка идёт байт количества кодов), в т.ч. многокадровый ответ.
+ */
 export function parseDtcResponse(raw: string, header = '43'): string[] {
   const codes: string[] = []
-  for (const line of raw.split(/[\r\n]+/)) {
-    const bytes = line.replace(/[^0-9A-Fa-f]/g, ' ').trim().split(/\s+/).filter(Boolean)
-    // Допускаем и «43 01 71…», и склеенное «4301710000…».
-    const flat = bytes.join('')
+  for (const flat of responseFrames(raw)) {
     if (!flat.startsWith(header)) continue
-    const body = flat.slice(2)
-    for (let i = 0; i + 4 <= body.length; i += 4) {
+    let body = flat.slice(2)
+    let limit = Infinity
+    // У CAN тело = 1 байт количества + пары байт, то есть нечётное число байт; у К-линии — всегда чётное.
+    if ((body.length >> 1) % 2 === 1) {
+      limit = parseInt(body.slice(0, 2), 16)
+      body = body.slice(2)
+    }
+    for (let i = 0, n = 0; i + 4 <= body.length && n < limit; i += 4) {
       const word = body.slice(i, i + 4)
       if (word === '0000') continue
-      const v = parseInt(word, 16)
-      const letter = DTC_LETTER[(v >> 14) & 3]
-      const d1 = (v >> 12) & 3
-      codes.push(`${letter}${d1}${(v & 0xfff).toString(16).toUpperCase().padStart(3, '0')}`)
+      codes.push(dtcFromWord(word))
+      n++
     }
   }
   return [...new Set(codes)]
@@ -404,16 +471,38 @@ export function parseVinResponse(raw: string): string | null {
   return m ? m[0] : null
 }
 
-/** Возвращает байты данных после заголовка «41 xx». */
-export function parsePid(raw: string, pid: string): number[] | null {
-  const flat = raw.replace(/[^0-9A-Fa-f]/g, '')
-  const marker = '41' + pid.toUpperCase()
-  const at = flat.toUpperCase().indexOf(marker)
-  if (at < 0) return null
-  const out: number[] = []
-  const data = flat.slice(at + marker.length)
-  for (let i = 0; i + 2 <= data.length; i += 2) out.push(parseInt(data.slice(i, i + 2), 16))
-  return out
+/**
+ * Возвращает байты данных после заголовка «41 xx» (mode — байт ответа: 41 для режима 01, 42 для режима 02).
+ * Заголовок ищется только на границе байта, чтобы не принять за него середину данных.
+ */
+export function parsePid(raw: string, pid: string, mode = '41'): number[] | null {
+  const marker = (mode + pid).toUpperCase()
+  for (const flat of responseFrames(raw)) {
+    for (let at = flat.indexOf(marker); at >= 0; at = flat.indexOf(marker, at + 1)) {
+      if (at % 2) continue
+      const out: number[] = []
+      for (let i = at + marker.length; i + 2 <= flat.length; i += 2) out.push(parseInt(flat.slice(i, i + 2), 16))
+      return out
+    }
+  }
+  return null
+}
+
+/** Ответы адаптера, означающие «данных нет»: ЭБУ молчит, шина не поднялась, команда не понята. */
+const NO_ANSWER = /NO DATA|UNABLE|ERROR|STOPPED|BUFFER FULL|\?/i
+
+/** Стоп-кадр (режим 02): условия работы двигателя в момент, когда ЭБУ записал ошибку. */
+export interface FreezeFrame {
+  /** Код, из-за которого сохранён кадр. */
+  dtc: string
+  rpm: number | null
+  speedKmh: number | null
+  coolantTempC: number | null
+  loadPct: number | null
+  throttlePct: number | null
+  mafGs: number | null
+  stft: number | null
+  ltft: number | null
 }
 
 /* ------------------------------------------------------------------ */
@@ -495,12 +584,10 @@ export class ELMService {
 
   async connect(): Promise<void> {
     await this.transport.connect()
-    // ATZ — сброс, ATE0 — без эха, ATL0 — без переводов строк, ATSP0 — авто-протокол.
-    // Для ВАЗ с М73 фактически будет ISO 14230 (KWP2000) или ISO 9141 — выбирает адаптер.
     this.progress('Сброс адаптера…')
     await this.send('ATZ', 8000)
-    // ATE0 — без эха, ATL0 — без переводов строк, ATH0 — без заголовков, ATS0 — без пробелов не нужен (разбор устойчив),
-    // ATAT1 — адаптивный таймаут (К-линия отвечает медленнее CAN).
+    // ATE0 — без эха, ATL0 — без переводов строк, ATH0 — без заголовков, ATAT1 — адаптивный таймаут
+    // (К-линия отвечает медленнее CAN). Пробелы в ответах не отключаем: разбор к ним устойчив.
     for (const cmd of ['ATE0', 'ATL0', 'ATH0', 'ATAT1']) await this.send(cmd)
 
     // Сначала сохранённый протокол, затем авто-поиск, затем явный перебор К-линий и CAN.
@@ -547,15 +634,31 @@ export class ELMService {
 
   /** Необязательные PID, которые ЭБУ не поддержал, — больше не опрашиваем. */
   private unsupported = new Set<string>()
+  private misses = new Map<string, { n: number; answers: number }>()
+  /** Сколько раз ЭБУ ответил данными (на любой запрос). */
+  private answers = 0
 
   private async pid(pid: string, optional = false): Promise<number[] | null> {
     if (optional && this.unsupported.has(pid)) return null
     const raw = await this.send('01' + pid)
-    if (/NO DATA|UNABLE|ERROR|\?/i.test(raw)) {
-      if (optional) this.unsupported.add(pid)
-      return null
+    const data = NO_ANSWER.test(raw) ? null : parsePid(raw, pid)
+    if (data?.length) {
+      this.answers++
+      this.misses.delete(pid)
+      return data
     }
-    return parsePid(raw, pid)
+    // «Не поддерживается» — только если между отказами ЭБУ отвечал на другие запросы, то есть был на связи.
+    // Иначе одно выключение зажигания навсегда отключало бы все дополнительные датчики до переподключения.
+    if (optional) {
+      const m = this.misses.get(pid)
+      if (!m) this.misses.set(pid, { n: 1, answers: this.answers })
+      else if (this.answers > m.answers) {
+        m.n++
+        m.answers = this.answers
+        if (m.n >= 3) this.unsupported.add(pid)
+      }
+    }
+    return null
   }
 
   async readRpm(): Promise<number | null> {
@@ -595,8 +698,8 @@ export class ELMService {
     const volt = await this.pid('42', true)
     const mil = await this.pid('01', true)
     return {
-      milOn: mil && mil.length >= 1 ? (mil[0] & 0x80) !== 0 : null,
-      dtcCount: mil && mil.length >= 1 ? mil[0] & 0x7f : null,
+      milOn: mil ? (mil[0] & 0x80) !== 0 : null,
+      dtcCount: mil ? mil[0] & 0x7f : null,
       loadPct: load ? (load[0] * 100) / 255 : null,
       stft: stft ? (stft[0] * 100) / 128 - 100 : null,
       ltft: ltft ? (ltft[0] * 100) / 128 - 100 : null,
@@ -609,20 +712,67 @@ export class ELMService {
   /** Режим 09 PID 02 — VIN из ЭБУ. null, если ЭБУ не поддерживает (старые К-линейные М73 часто не умеют). */
   async readVin(): Promise<string | null> {
     const raw = await this.send('0902', 8000)
-    if (/NO DATA|UNABLE|ERROR|\?/i.test(raw)) return null
+    if (NO_ANSWER.test(raw)) return null
     return parseVinResponse(raw)
+  }
+
+  /** Коды из ответа; если ответа с нужным заголовком нет, а адаптер сообщил о сбое связи — ошибка, а не «кодов нет». */
+  private dtcs(raw: string, header: string, what: string): string[] {
+    if (responseFrames(raw).some((f) => f.startsWith(header))) return parseDtcResponse(raw, header)
+    if (/UNABLE|ERROR|STOPPED|BUFFER FULL/i.test(raw)) {
+      throw new ELMError(`ЭБУ не ответил на запрос ${what} (${raw.replace(/\s+/g, ' ').trim().slice(0, 40)}). Включите зажигание и повторите.`)
+    }
+    return []
   }
 
   /** Режим 03 — сохранённые (подтверждённые) коды неисправностей. */
   async readDtcs(): Promise<string[]> {
-    const raw = await this.send('03')
-    return /NO DATA/i.test(raw) ? [] : parseDtcResponse(raw)
+    return this.dtcs(await this.send('03'), '43', 'сохранённых кодов')
   }
 
   /** Режим 07 — временные (ожидающие подтверждения) коды. Не все ЭБУ поддерживают. */
   async readPendingDtcs(): Promise<string[]> {
-    const raw = await this.send('07')
-    return /NO DATA|UNABLE|\?/i.test(raw) ? [] : parseDtcResponse(raw, '47')
+    return this.dtcs(await this.send('07'), '47', 'временных кодов')
+  }
+
+  /**
+   * Режим 02 — стоп-кадр: показания датчиков, которые ЭБУ запомнил в момент появления ошибки.
+   * null, если кадра нет или ЭБУ режим не поддерживает (на старых блоках это обычное дело).
+   */
+  async readFreezeFrame(): Promise<FreezeFrame | null> {
+    // Ответ: «42 <PID> <номер кадра> <данные>» — первый байт данных отбрасываем.
+    const ff = async (pid: string): Promise<number[] | null> => {
+      const raw = await this.send(`02${pid}00`)
+      const d = NO_ANSWER.test(raw) ? null : parsePid(raw, pid, '42')
+      return d && d.length > 1 ? d.slice(1) : null
+    }
+    const cause = await ff('02')
+    if (!cause || cause.length < 2 || (cause[0] === 0 && cause[1] === 0)) return null
+    const dtc = dtcFromWord(cause.slice(0, 2).map((b) => b.toString(16).padStart(2, '0')).join(''))
+    const rpm = await ff('0C')
+    const speed = await ff('0D')
+    const ect = await ff('05')
+    const load = await ff('04')
+    const thr = await ff('11')
+    const maf = await ff('10')
+    const stft = await ff('06')
+    const ltft = await ff('07')
+    return {
+      dtc,
+      rpm: rpm && rpm.length >= 2 ? (rpm[0] * 256 + rpm[1]) / 4 : null,
+      speedKmh: speed ? speed[0] : null,
+      coolantTempC: ect ? ect[0] - 40 : null,
+      loadPct: load ? (load[0] * 100) / 255 : null,
+      throttlePct: thr ? (thr[0] * 100) / 255 : null,
+      mafGs: maf && maf.length >= 2 ? (maf[0] * 256 + maf[1]) / 100 : null,
+      stft: stft ? (stft[0] * 100) / 128 - 100 : null,
+      ltft: ltft ? (ltft[0] * 100) / 128 - 100 : null,
+    }
+  }
+
+  /** Название найденного протокола обмена с ЭБУ. */
+  get protocolName(): string | null {
+    return this.protocol ? PROTOCOL_NAMES[this.protocol.toUpperCase()] ?? `протокол ${this.protocol}` : null
   }
 }
 
@@ -642,5 +792,6 @@ export function createElmService(t: ConnectTarget): ELMService {
     if (!t.bleId) throw new Error('Bluetooth-адаптер не выбран')
     return new ELMService(new BleTransport(t.bleId), cfg)
   }
-  return new ELMService(new CapacitorTcpTransport(cfg), cfg)
+  // В браузере «сырого» TCP нет — остаётся только мост ws:// (для разработки).
+  return new ELMService(Capacitor.isNativePlatform() ? new CapacitorTcpTransport(cfg) : new WebSocketTransport(cfg), cfg)
 }

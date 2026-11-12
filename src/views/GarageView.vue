@@ -3,14 +3,14 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
-import { CAR_PRESETS, carTitle, type Car } from '@/services/Cars'
+import { CAR_PRESETS, carTitle, currentOdometer, type Car } from '@/services/Cars'
 import { decodeVin } from '@/services/Vin'
 import { decodeVinOnline, scanVinWithCamera } from '@/services/VinScanner'
-import { num } from '@/utils/format'
+import { int } from '@/utils/format'
 
 const router = useRouter()
-const { garage, car, selectCar, addCar, removeCar } = useGarage()
-const { isConnected, getElm } = useVehicle()
+const { garage, car, selectCar, addCar, removeCar, setOdometer } = useGarage()
+const { isConnected, getElm, tripActive } = useVehicle()
 
 const editing = ref<string | null>(car().id)
 const edited = computed<Car | null>(() => garage.cars.find((c) => c.id === editing.value) ?? null)
@@ -35,8 +35,25 @@ function remove(c: Car): void {
 }
 
 function pick(c: Car): void {
+  if (c.id !== garage.activeCarId && tripActive.value && !confirm('Идёт запись поездки. Она будет завершена и сохранена на прежней машине. Переключить?')) return
   selectCar(c.id)
   editing.value = c.id
+}
+
+/** Одометр вводится как точка отсчёта: запоминаем вместе с ним счётчик приложения. */
+function onOdometer(e: Event): void {
+  const c = edited.value
+  if (!c) return
+  const raw = (e.target as HTMLInputElement).value
+  setOdometer(c.id, raw === '' ? null : Number(raw))
+}
+
+/** Числовые поля: пустая строка из инпута — это «не задано», а не ''. */
+function numField(key: 'year' | 'displacementL' | 'powerHp' | 'tankL' | 'oilCapacityL', e: Event): void {
+  const c = edited.value
+  if (!c) return
+  const raw = (e.target as HTMLInputElement).value
+  c[key] = raw === '' || !Number.isFinite(Number(raw)) ? null : Number(raw)
 }
 
 const presetIdx = ref('')
@@ -60,7 +77,7 @@ function useDecoded(): void {
   c.vin = i.vin
   if (i.year && !c.year) c.year = i.year
   if (i.maker && !c.make) c.make = i.maker.split(' ')[0]
-  say('VIN применён к профилю')
+  say(i.year || i.maker ? 'VIN приведён к стандартному виду, год и марка добавлены в пустые поля' : 'VIN приведён к стандартному виду')
 }
 
 async function fromEcu(): Promise<void> {
@@ -117,20 +134,20 @@ const fuels = ['', 'АИ-92', 'АИ-95', 'АИ-98', 'ДТ', 'Газ'] as const
   <section class="space-y-2">
     <div class="flex items-center justify-between">
       <h2 class="label">Мои автомобили</h2>
-      <button class="btn !px-3 !py-2 !text-xs" @click="add">+ Добавить</button>
+      <button class="btn btn-sm" @click="add">+ Добавить</button>
     </div>
 
     <div class="space-y-2">
       <article v-for="c in garage.cars" :key="c.id" class="card flex items-center gap-3 p-3" :class="c.id === garage.activeCarId ? '!border-accent' : ''">
-        <div class="min-w-0 flex-1" @click="pick(c)">
-          <div class="truncate font-semibold">{{ carTitle(c) }}</div>
-          <div class="truncate font-mono text-xs text-[#7b8696]">
+        <button class="min-w-0 flex-1 text-left" @click="pick(c)">
+          <span class="block truncate font-semibold">{{ carTitle(c) }}</span>
+          <span class="block truncate font-mono text-xs muted">
             {{ [c.year, c.plate, c.displacementL ? c.displacementL + ' л' : '', c.powerHp ? c.powerHp + ' л.с.' : ''].filter(Boolean).join(' · ') || 'без данных' }}
-          </div>
-          <div class="font-mono text-xs text-[#5f6978]">учтено приложением: {{ num(c.trackedTotalKm, 0) }} км</div>
-        </div>
+          </span>
+          <span class="block truncate font-mono text-xs text-[#5f6978]">{{ currentOdometer(c) != null ? `одометр ≈ ${int(currentOdometer(c))} км · ` : '' }}записано приложением: {{ int(c.trackedTotalKm) }} км</span>
+        </button>
         <span v-if="c.id === garage.activeCarId" class="label text-ok">активна</span>
-        <button v-else class="btn-ghost !px-3 !py-2 !text-xs" @click="pick(c)">Выбрать</button>
+        <button v-else class="btn-ghost btn-sm" @click="pick(c)">Выбрать</button>
       </article>
     </div>
 
@@ -139,10 +156,10 @@ const fuels = ['', 'АИ-92', 'АИ-95', 'АИ-98', 'ДТ', 'Газ'] as const
     <div v-if="edited" class="card space-y-3 p-4">
       <div class="flex items-center justify-between">
         <h3 class="label">Профиль: {{ carTitle(edited) }}</h3>
-        <button class="text-xs text-bad underline" @click="remove(edited)">удалить</button>
+        <button v-if="garage.cars.length > 1" class="link !text-bad" @click="remove(edited)">удалить</button>
       </div>
 
-      <label class="block text-xs text-[#7b8696]">Заполнить по шаблону
+      <label class="block text-xs muted">Заполнить по шаблону
         <select v-model="presetIdx" class="field mt-1" @change="applyPreset">
           <option value="">— выберите модель —</option>
           <option v-for="(p, i) in CAR_PRESETS" :key="p.label" :value="String(i)">{{ p.label }}</option>
@@ -150,53 +167,53 @@ const fuels = ['', 'АИ-92', 'АИ-95', 'АИ-98', 'ДТ', 'Газ'] as const
       </label>
 
       <div class="grid grid-cols-2 gap-3">
-        <label class="col-span-2 text-xs text-[#7b8696]">Название<input v-model="edited.name" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Марка<input v-model="edited.make" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Модель<input v-model="edited.model" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Год<input v-model.number="edited.year" type="number" inputmode="numeric" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Госномер<input v-model="edited.plate" class="field mt-1 uppercase" /></label>
-        <label class="text-xs text-[#7b8696]">Цвет<input v-model="edited.color" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Кузов<input v-model="edited.body" class="field mt-1" /></label>
+        <label class="col-span-2 text-xs muted">Название<input v-model="edited.name" class="field mt-1" /></label>
+        <label class="text-xs muted">Марка<input v-model="edited.make" class="field mt-1" /></label>
+        <label class="text-xs muted">Модель<input v-model="edited.model" class="field mt-1" /></label>
+        <label class="text-xs muted">Год<input :value="edited.year ?? ''" type="number" inputmode="numeric" min="1950" max="2100" class="field mt-1" @input="numField('year', $event)" /></label>
+        <label class="text-xs muted">Госномер<input v-model="edited.plate" class="field mt-1 uppercase" /></label>
+        <label class="text-xs muted">Цвет<input v-model="edited.color" class="field mt-1" /></label>
+        <label class="text-xs muted">Кузов<input v-model="edited.body" class="field mt-1" /></label>
       </div>
 
       <div class="space-y-2 border border-night-600 p-3">
         <div class="label">VIN</div>
         <input v-model="edited.vin" maxlength="24" placeholder="17 знаков" class="field uppercase tracking-wider" autocapitalize="characters" spellcheck="false" />
         <div class="grid grid-cols-2 gap-2">
-          <button class="btn-ghost !px-2 !py-2 !text-xs" :disabled="busy !== null" @click="fromCamera">{{ busy === 'cam' ? 'Сканирую…' : 'Сканировать камерой' }}</button>
-          <button class="btn-ghost !px-2 !py-2 !text-xs" :disabled="!isConnected || busy !== null" :title="isConnected ? '' : 'Нужно подключение к адаптеру'" @click="fromEcu">{{ busy === 'ecu' ? 'Читаю…' : 'Считать из ЭБУ' }}</button>
+          <button class="btn-ghost btn-sm" :disabled="busy !== null" @click="fromCamera">{{ busy === 'cam' ? 'Сканирую…' : 'Сканировать камерой' }}</button>
+          <button class="btn-ghost btn-sm" :disabled="!isConnected || busy !== null" :title="isConnected ? '' : 'Нужно подключение к адаптеру'" @click="fromEcu">{{ busy === 'ecu' ? 'Читаю…' : 'Считать из ЭБУ' }}</button>
         </div>
         <div v-if="vinInfo" class="space-y-1 text-sm">
           <dl v-if="vinInfo.valid" class="divide-y divide-night-600">
-            <div class="flex justify-between py-1"><dt class="text-[#7b8696]">Страна</dt><dd>{{ vinInfo.country ?? 'не определена' }}</dd></div>
-            <div class="flex justify-between py-1"><dt class="text-[#7b8696]">Изготовитель (WMI {{ vinInfo.wmi }})</dt><dd class="text-right">{{ vinInfo.maker ?? 'нет в базе' }}</dd></div>
-            <div class="flex justify-between py-1"><dt class="text-[#7b8696]">Модельный год</dt><dd class="font-mono">{{ vinInfo.year ?? '—' }}</dd></div>
-            <div class="flex justify-between py-1"><dt class="text-[#7b8696]">Завод (11-й знак) / №</dt><dd class="font-mono">{{ vinInfo.plantCode }} / {{ vinInfo.serial }}</dd></div>
+            <div class="flex justify-between py-1"><dt class="muted">Страна</dt><dd>{{ vinInfo.country ?? 'не определена' }}</dd></div>
+            <div class="flex justify-between py-1"><dt class="muted">Изготовитель (WMI {{ vinInfo.wmi }})</dt><dd class="text-right">{{ vinInfo.maker ?? 'нет в базе' }}</dd></div>
+            <div class="flex justify-between py-1"><dt class="muted">Модельный год</dt><dd class="font-mono">{{ vinInfo.year ?? '—' }}</dd></div>
+            <div class="flex justify-between py-1"><dt class="muted">Завод (11-й знак) / №</dt><dd class="font-mono">{{ vinInfo.plantCode }} / {{ vinInfo.serial }}</dd></div>
           </dl>
           <p v-for="p in vinInfo.problems" :key="p" class="text-xs" :class="vinInfo.valid ? 'text-warn' : 'text-bad'">{{ p }}</p>
           <div v-if="vinInfo.valid" class="grid grid-cols-2 gap-2 pt-1">
-            <button class="btn-ghost !px-2 !py-2 !text-xs" @click="useDecoded">Применить к профилю</button>
-            <button class="btn-ghost !px-2 !py-2 !text-xs" :disabled="busy !== null" @click="online">{{ busy === 'web' ? 'Запрос…' : 'Найти в базе NHTSA' }}</button>
+            <button class="btn-ghost btn-sm" @click="useDecoded">Применить к профилю</button>
+            <button class="btn-ghost btn-sm" :disabled="busy !== null" @click="online">{{ busy === 'web' ? 'Запрос…' : 'Найти в базе NHTSA' }}</button>
           </div>
           <p v-if="vinInfo.valid" class="text-[11px] text-[#5f6978]">«Найти в базе» отправляет VIN на vpic.nhtsa.dot.gov — только по этой кнопке.</p>
         </div>
       </div>
 
       <div class="grid grid-cols-2 gap-3">
-        <label class="text-xs text-[#7b8696]">Код двигателя<input v-model="edited.engineCode" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Объём, л<input v-model.number="edited.displacementL" type="number" step="0.1" inputmode="decimal" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Мощность, л.с.<input v-model.number="edited.powerHp" type="number" inputmode="numeric" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Топливо
+        <label class="text-xs muted">Код двигателя<input v-model="edited.engineCode" class="field mt-1" /></label>
+        <label class="text-xs muted">Объём, л<input :value="edited.displacementL ?? ''" type="number" step="0.1" min="0" inputmode="decimal" class="field mt-1" @input="numField('displacementL', $event)" /></label>
+        <label class="text-xs muted">Мощность, л.с.<input :value="edited.powerHp ?? ''" type="number" min="0" inputmode="numeric" class="field mt-1" @input="numField('powerHp', $event)" /></label>
+        <label class="text-xs muted">Топливо
           <select v-model="edited.fuel" class="field mt-1"><option v-for="f in fuels" :key="f" :value="f">{{ f || '—' }}</option></select>
         </label>
-        <label class="text-xs text-[#7b8696]">КПП<input v-model="edited.transmission" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Привод<input v-model="edited.drive" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Бак, л<input v-model.number="edited.tankL" type="number" inputmode="numeric" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Одометр, км<input v-model.number="edited.odometerKm" type="number" inputmode="numeric" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Масло (вязкость/класс)<input v-model="edited.oilSpec" class="field mt-1" /></label>
-        <label class="text-xs text-[#7b8696]">Объём масла, л<input v-model.number="edited.oilCapacityL" type="number" step="0.1" inputmode="decimal" class="field mt-1" /></label>
-        <label class="col-span-2 text-xs text-[#7b8696]">Шины<input v-model="edited.tires" class="field mt-1" /></label>
-        <label class="col-span-2 text-xs text-[#7b8696]">Заметки<textarea v-model="edited.notes" rows="3" class="field mt-1 font-sans" /></label>
+        <label class="text-xs muted">КПП<input v-model="edited.transmission" class="field mt-1" /></label>
+        <label class="text-xs muted">Привод<input v-model="edited.drive" class="field mt-1" /></label>
+        <label class="text-xs muted">Бак, л<input :value="edited.tankL ?? ''" type="number" min="0" inputmode="numeric" class="field mt-1" @input="numField('tankL', $event)" /></label>
+        <label class="text-xs muted">Одометр на приборке, км<input :value="edited.odometerKm ?? ''" type="number" min="0" inputmode="numeric" class="field mt-1" @change="onOdometer" /></label>
+        <label class="text-xs muted">Масло (вязкость/класс)<input v-model="edited.oilSpec" class="field mt-1" /></label>
+        <label class="text-xs muted">Объём масла, л<input :value="edited.oilCapacityL ?? ''" type="number" step="0.1" min="0" inputmode="decimal" class="field mt-1" @input="numField('oilCapacityL', $event)" /></label>
+        <label class="col-span-2 text-xs muted">Шины<input v-model="edited.tires" class="field mt-1" /></label>
+        <label class="col-span-2 text-xs muted">Заметки<textarea v-model="edited.notes" rows="3" class="field mt-1 font-sans" /></label>
       </div>
 
       <p class="text-xs text-[#5f6978]">Изменения сохраняются автоматически. У каждой машины свои поездки, масло и счётчик пробега; новые поездки пишутся на активную машину.</p>

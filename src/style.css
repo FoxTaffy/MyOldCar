@@ -10,12 +10,32 @@ body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
 }
-input[type='checkbox'], input[type='radio'] { @apply accent-accent; }
+input[type='checkbox'], input[type='radio'] { @apply h-4 w-4 shrink-0 accent-accent; }
+input[type='range'] { @apply accent-accent; }
+button, a, summary { touch-action: manipulation; }
+:focus-visible { outline: 2px solid #7fb0e6; outline-offset: 1px; }
 
 .card { @apply border border-night-600 bg-night-800; }
 .label { @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7b8696]; }
+.muted { @apply text-[#7b8696]; }
 .btn { @apply bg-accent px-4 py-3 text-sm font-semibold uppercase tracking-wider text-night-950 active:bg-accent-glow disabled:opacity-35; }
 .btn-ghost { @apply border border-night-600 bg-transparent px-4 py-3 text-sm font-semibold uppercase tracking-wider text-[#c3cad5] active:bg-night-700 disabled:opacity-35; }
-.field { @apply w-full border border-night-600 bg-night-900 px-3 py-2 font-mono text-[#d5dae2]; }
+/* Компактный вариант кнопок — для шапки и строк списков. */
+.btn-sm { @apply !px-3 !py-2 !text-xs; }
+.link { @apply text-xs text-[#7b8696] underline underline-offset-2 active:text-[#d5dae2]; }
+.field { @apply w-full border border-night-600 bg-night-900 px-3 py-2 font-mono text-[#d5dae2] placeholder:text-[#4a5260] focus:border-accent focus:outline-none; }
+select.field { @apply appearance-none bg-no-repeat pr-8; background-image: linear-gradient(45deg, transparent 50%, #7b8696 50%), linear-gradient(135deg, #7b8696 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; }
+/* Значок Check Engine: красная рамка с восклицательным знаком. */
+.mil { @apply flex shrink-0 items-center justify-center border-2 border-bad font-mono font-bold text-bad; }
+/* Таблица «параметр — значение». */
+.rows { @apply divide-y divide-night-600 text-sm; }
+.rows > div { @apply flex items-baseline justify-between gap-3 py-1.5; }
+.rows dt { @apply text-[#7b8696]; }
+.rows dd { @apply text-right font-mono tabular-nums; }
+/* Сетка плиток с тонкими разделителями. */
+.tiles { @apply grid gap-px border border-night-600 bg-night-600; }
+.tiles > div { @apply bg-night-800 p-3; }
+.tile-value { @apply font-mono text-2xl font-semibold tabular-nums; }
+.tile-unit { @apply text-xs font-normal text-[#7b8696]; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

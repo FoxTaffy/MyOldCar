@@ -26,6 +26,8 @@ export interface Trip {
   events?: TripEvent[]
   /** Есть ли сохранённый трек (точки с координатами и показаниями). */
   hasTrack?: boolean
+  /** Поездка записана в демо-режиме (симулятор): в статистику реальной машины не идёт. */
+  demo?: boolean
 }
 
 export const tripAvgSpeed = (t: Trip): number => (t.movingMs > 0 ? t.distanceKm / (t.movingMs / 3_600_000) : 0)
@@ -40,10 +42,14 @@ export const MAX_GPS_GAP_MS = 10 * 60_000
 export class TripRecorder {
   current: Trip | null = null
   private last: { t: number; speed: number } | null = null
+  /** Последний незакрытый пропуск в данных: его ещё могут заполнить опоздавшие точки GPS (см. fillHole). */
+  private hole: { from: number; to: number } | null = null
 
-  begin(now: number, carId?: string): void {
+  begin(now: number, carId?: string, demo = false): void {
     this.current = { id: String(now), carId, start: now, end: now, distanceKm: 0, fuelL: 0, movingMs: 0, stoppedMs: 0, maxSpeedKmh: 0 }
+    if (demo) this.current.demo = true
     this.last = null
+    this.hole = null
   }
 
   /**
@@ -62,7 +68,10 @@ export class TripRecorder {
     if (!prev) return 0
     const dt = t - prev.t
     if (dt > MAX_GAP_MS) {
-      if (gapKm == null || dt > MAX_GPS_GAP_MS) return 0
+      if (gapKm == null || dt > MAX_GPS_GAP_MS) {
+        this.hole = { from: prev.t, to: t }
+        return 0
+      }
       trip.distanceKm += gapKm
       if (gapKm > 0) trip.movingMs += dt
       else trip.stoppedMs += dt
@@ -76,9 +85,21 @@ export class TripRecorder {
     return km
   }
 
-  /** Время без движения учитываем как стоянку, даже когда данных скорости нет (потеря связи, пауза). */
-  addStopped(ms: number): void {
-    if (this.current && ms > 0) this.current.stoppedMs += ms
+  /**
+   * Опоздавший отрезок GPS [from, to] длиной km. Если он попадает в незакрытый пропуск данных
+   * (приложение спало, а служба GPS писала точки в журнал) — добавляет его пробег и время в поездку.
+   */
+  fillHole(from: number, to: number, km: number): number {
+    const trip = this.current
+    const hole = this.hole
+    if (!trip || !hole || to <= hole.from || from >= hole.to) return 0
+    const ms = Math.min(to, hole.to) - Math.max(from, hole.from)
+    trip.distanceKm += km
+    if (km > 0) trip.movingMs += ms
+    else trip.stoppedMs += ms
+    // Заполненную часть пропуска закрываем, чтобы не учесть её дважды.
+    hole.from = Math.max(hole.from, to)
+    return km
   }
 
   /** Завершает поездку; слишком короткие (<0.1 км) отбрасываются. */
@@ -86,8 +107,11 @@ export class TripRecorder {
     const trip = this.current
     this.current = null
     this.last = null
+    this.hole = null
     if (!trip) return null
     trip.end = now
+    // Простой после последней активности (зажигание включено, двигатель заглушен) в поездку не входит.
+    trip.stoppedMs = Math.max(0, Math.min(trip.stoppedMs, now - trip.start - trip.movingMs))
     return trip.distanceKm >= 0.1 ? trip : null
   }
 }

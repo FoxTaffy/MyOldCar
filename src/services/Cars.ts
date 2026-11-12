@@ -22,6 +22,8 @@ export interface Car {
   tankL: number | null
   /** Показание одометра на момент ввода, км. */
   odometerKm: number | null
+  /** Значение счётчика приложения (trackedTotalKm) в момент ввода одометра — чтобы оценивать текущий пробег. */
+  odometerTrackedAt: number
   oilSpec: string
   oilCapacityL: number | null
   tires: string
@@ -31,7 +33,7 @@ export interface Car {
   trackedTotalKm: number
 }
 
-export type CarPreset = Partial<Omit<Car, 'id' | 'oil' | 'trackedTotalKm'>> & { label: string }
+export type CarPreset = Partial<Omit<Car, 'id' | 'oil' | 'trackedTotalKm' | 'odometerKm' | 'odometerTrackedAt'>> & { label: string }
 
 /** Типовые характеристики для быстрого заполнения (можно поправить руками). */
 export const CAR_PRESETS: CarPreset[] = [
@@ -52,7 +54,7 @@ export function newCar(init: Partial<Car> = {}): Car {
     id: `car${Date.now().toString(36)}${(seq++).toString(36)}`,
     name: 'Моя машина', make: '', model: '', year: null, vin: '', plate: '', color: '', body: '',
     engineCode: '', displacementL: null, powerHp: null, fuel: '', transmission: '', drive: '',
-    tankL: null, odometerKm: null, oilSpec: '', oilCapacityL: null, tires: '', notes: '',
+    tankL: null, odometerKm: null, odometerTrackedAt: 0, oilSpec: '', oilCapacityL: null, tires: '', notes: '',
     oil: { ...DEFAULT_OIL }, trackedTotalKm: 0,
     ...init,
   }
@@ -60,10 +62,18 @@ export function newCar(init: Partial<Car> = {}): Car {
 
 export function carTitle(c: Car): string {
   const model = [c.make, c.model].filter(Boolean).join(' ')
-  return c.name && model && c.name !== model ? `${c.name} · ${model}` : c.name || model || 'Автомобиль'
+  // «ВАЗ-2104» и «ВАЗ 2104» — одно и то же: не повторяем марку с моделью, если название их уже содержит.
+  const key = (t: string) => t.toLowerCase().replace(/[^a-zа-яё0-9]/gi, '')
+  return c.name && model && !key(c.name).includes(key(model)) ? `${c.name} · ${model}` : c.name || model || 'Автомобиль'
 }
 
 /** Короткая подпись для шапки. */
 export function carShort(c: Car): string {
   return (c.name || [c.make, c.model].filter(Boolean).join(' ') || 'Автомобиль').toUpperCase()
+}
+
+/** Оценка текущего показания одометра: введённое значение + пробег, намеренный приложением после ввода. */
+export function currentOdometer(c: Car): number | null {
+  if (c.odometerKm == null || !Number.isFinite(c.odometerKm)) return null
+  return c.odometerKm + Math.max(0, c.trackedTotalKm - (c.odometerTrackedAt ?? 0))
 }

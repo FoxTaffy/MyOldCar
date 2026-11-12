@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import OnboardingWizard from '@/components/OnboardingWizard.vue'
 import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
@@ -7,6 +8,7 @@ import { carShort } from '@/services/Cars'
 
 const v = useVehicle()
 const { car } = useGarage()
+const route = useRoute()
 const showSetup = ref(!v.prefs.onboarded)
 const tabs = [
   { to: '/', label: 'Панель' },
@@ -15,28 +17,42 @@ const tabs = [
   { to: '/stats', label: 'Поездки' },
   { to: '/service', label: 'Сервис' },
 ]
+/** Карта поездки — часть раздела «Поездки»: вкладка должна оставаться подсвеченной. */
+const activeTab = computed(() => (route.path.startsWith('/trip') ? '/stats' : route.path))
 onMounted(() => v.autoStart())
 const viaText = { ble: 'BLUETOOTH', wifi: 'WI-FI', mock: 'ДЕМО' } as const
-const statusText = computed(() =>
-  v.status.value === 'connected' ? `ONLINE · ${viaText[v.via.value ?? 'mock']}` : v.status.value === 'connecting' ? (v.note.value ?? 'ПОДКЛЮЧЕНИЕ…').toUpperCase() : 'ОФФЛАЙН',
-)
+const statusText = computed(() => {
+  if (v.status.value === 'connecting') return (v.note.value ?? 'Подключение…').toUpperCase()
+  if (v.status.value !== 'connected') return 'НЕТ СВЯЗИ'
+  return v.ecuSilent.value ? 'ЭБУ МОЛЧИТ · ЗАЖИГАНИЕ?' : `НА СВЯЗИ · ${viaText[v.via.value ?? 'mock']}`
+})
+const dot = computed(() => (v.status.value === 'connected' ? (v.ecuSilent.value ? 'bg-warn' : 'bg-ok') : v.status.value === 'connecting' ? 'bg-accent' : 'bg-[#4a5260]'))
 </script>
 
 <template>
   <div class="mx-auto flex h-full max-w-3xl flex-col">
-    <header class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-night-600 px-4 py-2">
-      <RouterLink to="/garage" class="mr-auto block" title="Профили автомобилей">
-        <div class="text-sm font-semibold uppercase tracking-[0.12em]">{{ carShort(car()) }} <span class="text-[#7b8696]">▾</span></div>
-        <div class="flex items-center gap-2 font-mono text-[11px] text-[#7b8696]">
-          <span class="inline-block h-2 w-2" :class="v.isConnected.value ? 'bg-ok' : 'bg-[#4a5260]'" />{{ statusText }}
-          <span v-if="v.tripActive.value" class="text-ok">· ЗАПИСЬ ПОЕЗДКИ</span>
-        </div>
-      </RouterLink>
-      <span v-if="v.milOn.value" class="flex h-8 w-8 items-center justify-center border-2 border-bad font-mono text-lg font-bold text-bad" title="Горит Check Engine" @click="$router.push('/diagnostics')">!</span>
-      <button v-if="!v.isConnected.value" class="btn !px-3 !py-2 !text-xs" :disabled="v.status.value === 'connecting'" @click="v.connect()">{{ v.status.value === 'connecting' ? 'Ждите…' : 'Подключить' }}</button>
-      <button v-else class="btn-ghost !px-3 !py-2 !text-xs" @click="v.disconnect()">Отключить</button>
-      <button class="btn-ghost !px-3 !py-2 !text-xs" @click="showSetup = true">Настр.</button>
-      <p v-if="v.error.value" class="w-full font-mono text-xs text-bad">{{ v.error.value }}</p>
+    <header class="border-b border-night-600 px-3 py-2">
+      <div class="flex items-center gap-2">
+        <RouterLink to="/garage" class="mr-auto min-w-0 truncate py-1 text-sm font-semibold uppercase tracking-[0.12em]" title="Профили автомобилей">
+          {{ carShort(car()) }} <span class="muted">▾</span>
+        </RouterLink>
+        <RouterLink v-if="v.milOn.value" to="/diagnostics" class="mil h-9 w-9 text-lg" title="Горит Check Engine" aria-label="Горит Check Engine — открыть ошибки">!</RouterLink>
+        <button v-if="v.status.value === 'disconnected'" class="btn btn-sm h-9" @click="v.connect()">Подключить</button>
+        <button v-else class="btn-ghost btn-sm h-9" @click="v.disconnect()">{{ v.status.value === 'connecting' ? 'Отмена' : 'Отключить' }}</button>
+        <button class="flex h-9 w-9 shrink-0 items-center justify-center border border-night-600 text-[#c3cad5] active:bg-night-700" title="Настройки" aria-label="Настройки" @click="showSetup = true">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true">
+            <path d="M3 7h9M18 7h3M3 17h3M12 17h9" /><rect x="12" y="4" width="6" height="6" /><rect x="6" y="14" width="6" height="6" />
+          </svg>
+        </button>
+      </div>
+      <div class="mt-1 flex items-center gap-2 font-mono text-[11px] text-[#7b8696]">
+        <span class="inline-block h-2 w-2 shrink-0" :class="dot" />
+        <span class="min-w-0 truncate">{{ statusText }}</span>
+        <span v-if="v.tripActive.value" class="ml-auto shrink-0 text-ok">● ЗАПИСЬ ПОЕЗДКИ</span>
+      </div>
+      <button v-if="v.error.value" class="mt-1 flex w-full items-start gap-2 text-left font-mono text-xs text-bad" title="Скрыть" @click="v.clearError()">
+        <span class="min-w-0 flex-1 break-words">{{ v.error.value }}</span><span class="muted shrink-0" aria-hidden="true">✕</span>
+      </button>
     </header>
 
     <main class="min-h-0 flex-1 overflow-y-auto p-3">
@@ -46,7 +62,11 @@ const statusText = computed(() =>
     <OnboardingWizard v-if="showSetup" @done="showSetup = false" />
 
     <nav class="grid grid-cols-5 border-t border-night-600 bg-night-900 pb-[env(safe-area-inset-bottom)]">
-      <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="border-t-2 border-transparent py-3 text-center text-[10px] font-semibold uppercase tracking-[0.1em] text-[#7b8696]" active-class="!border-accent !text-[#d5dae2]">
+      <RouterLink
+        v-for="t in tabs" :key="t.to" :to="t.to"
+        class="border-t-2 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.1em]"
+        :class="activeTab === t.to ? 'border-accent text-[#d5dae2]' : 'border-transparent text-[#7b8696]'"
+      >
         {{ t.label }}
       </RouterLink>
     </nav>

@@ -4,26 +4,33 @@ import DailyChart, { type DayPoint } from '@/components/DailyChart.vue'
 import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { tripAvgSpeed, tripConsumption, type Trip } from '@/services/TripRecorder'
-import { dateTime, dayKey, duration, num } from '@/utils/format'
+import { dateTime, dayKey, int, liters, num, span, time } from '@/utils/format'
 
 const { garage, clearTrips, deleteTrip } = useGarage()
-const { tripLive, tripActive } = useVehicle()
+const { tripLive, tripActive, session, prefs } = useVehicle()
 const period = ref<'7' | '30' | 'all'>('7')
 const periods = [{ k: '7', l: '7 дней' }, { k: '30', l: '30 дней' }, { k: 'all', l: 'Всё' }] as const
 
+/** Демо-поездки видны только в демо-режиме и в статистику реальной машины не попадают. */
+const demoMode = computed(() => prefs.mode === 'mock')
+const mine = computed(() => garage.trips.filter((t) => (!t.carId || t.carId === garage.activeCarId) && !!t.demo === demoMode.value))
+
 const trips = computed<Trip[]>(() => {
   const from = period.value === 'all' ? 0 : Date.now() - Number(period.value) * 86400000
-  const list = garage.trips.filter((t) => t.start >= from && (!t.carId || t.carId === garage.activeCarId))
+  const list = mine.value.filter((t) => t.start >= from)
   const live = tripLive.value
-  if (tripActive.value && live.distanceKm >= 0.05) {
-    list.push({ id: 'live', carId: garage.activeCarId, start: Date.now() - live.movingMs - live.stoppedMs, end: Date.now(), hasTrack: true, ...live })
+  if (tripActive.value && live.distanceKm >= 0.05 && session.demo === demoMode.value) {
+    list.push({ id: 'live', carId: garage.activeCarId, end: Date.now(), hasTrack: true, ...live })
   }
   return list.sort((a, b) => b.start - a.start)
 })
 
 function sum(list: Trip[]) {
-  const t = list.reduce((a, x) => ({ km: a.km + x.distanceKm, l: a.l + x.fuelL, mv: a.mv + x.movingMs, st: a.st + x.stoppedMs }), { km: 0, l: 0, mv: 0, st: 0 })
-  return { ...t, avg: t.mv ? t.km / (t.mv / 3_600_000) : 0, l100: t.km >= 0.5 ? (t.l / t.km) * 100 : null, cost: t.l * garage.fuelPrice }
+  const t = list.reduce((a, x) => ({ km: a.km + x.distanceKm, l: a.l + x.fuelL, mv: a.mv + x.movingMs, st: a.st + x.stoppedMs, max: Math.max(a.max, x.maxSpeedKmh) }), { km: 0, l: 0, mv: 0, st: 0, max: 0 })
+  // Расход считаем только по поездкам, где есть данные ДМРВ: иначе GPS-поездки занижали бы среднее.
+  const fuelled = list.filter((x) => x.fuelL > 0)
+  const fkm = fuelled.reduce((a, x) => a + x.distanceKm, 0)
+  return { ...t, avg: t.mv ? t.km / (t.mv / 3_600_000) : null, l100: fkm >= 0.5 ? (t.l / fkm) * 100 : null, cost: t.l > 0 ? t.l * garage.fuelPrice : null }
 }
 const total = computed(() => sum(trips.value))
 
@@ -35,6 +42,8 @@ const days = computed<DayPoint[]>(() => {
     return { label: k.slice(8) + '.' + k.slice(5, 7), km: s.km, l100: s.l100 }
   })
 })
+
+const sourceText = { obd: 'OBD', gps: 'GPS', both: 'OBD + GPS' } as const
 
 function askDelete(id: string): void {
   if (confirm('Удалить поездку?')) deleteTrip(id)
@@ -48,22 +57,28 @@ function wipe(): void {
 <template>
   <section class="space-y-2">
     <div class="grid grid-cols-3 border border-night-600">
-      <button v-for="p in periods" :key="p.k" class="py-2 text-xs font-semibold uppercase tracking-wider" :class="period === p.k ? 'bg-accent text-night-950' : 'text-[#7b8696]'" @click="period = p.k">{{ p.l }}</button>
+      <button v-for="p in periods" :key="p.k" class="py-2 text-xs font-semibold uppercase tracking-wider" :class="period === p.k ? 'bg-accent text-night-950' : 'muted'" @click="period = p.k">{{ p.l }}</button>
+    </div>
+    <p v-if="demoMode" class="border border-night-600 p-2 text-center text-xs muted">Демо-режим: показаны симулированные поездки. В статистику машины и счётчик масла они не идут.</p>
+
+    <div v-if="!trips.length" class="card p-4 text-sm muted">
+      {{ mine.length ? 'За выбранный период поездок нет — выберите период побольше.' : 'Поездок пока нет. Запись идёт сама: по GPS и датчикам, в том числе при свёрнутом приложении.' }}
     </div>
 
-    <div v-if="!trips.length" class="card p-4 text-sm text-[#7b8696]">Поездок пока нет. Запись идёт сама: по GPS и датчикам, в том числе при свёрнутом приложении.</div>
-
     <template v-else>
-      <div class="card grid grid-cols-2 gap-px bg-night-600 p-0">
-        <div class="bg-night-800 p-3"><div class="label">Расстояние</div><div class="font-mono text-2xl font-semibold">{{ num(total.km, 1) }} <span class="text-xs text-[#7b8696]">км</span></div></div>
-        <div class="bg-night-800 p-3"><div class="label">Ср. скорость</div><div class="font-mono text-2xl font-semibold">{{ num(total.avg, 1) }} <span class="text-xs text-[#7b8696]">км/ч</span></div></div>
-        <div class="bg-night-800 p-3"><div class="label">Топливо</div><div class="font-mono text-2xl font-semibold">{{ num(total.l, 1) }} <span class="text-xs text-[#7b8696]">л</span></div></div>
-        <div class="bg-night-800 p-3"><div class="label">Расход</div><div class="font-mono text-2xl font-semibold">{{ num(total.l100, 1) }} <span class="text-xs text-[#7b8696]">л/100</span></div></div>
-        <div class="bg-night-800 p-3"><div class="label">Стоимость</div><div class="font-mono text-2xl font-semibold">{{ num(total.cost, 0) }} <span class="text-xs text-[#7b8696]">₽</span></div></div>
-        <div class="col-span-2 grid grid-cols-3 gap-px bg-night-600">
-          <div class="bg-night-800 p-3"><div class="label">Всего</div><div class="font-mono text-lg font-semibold">{{ duration(total.mv + total.st) }}</div></div>
-          <div class="bg-night-800 p-3"><div class="label">В пути</div><div class="font-mono text-lg font-semibold">{{ duration(total.mv) }}</div></div>
-          <div class="bg-night-800 p-3"><div class="label">Стоянка</div><div class="font-mono text-lg font-semibold">{{ duration(total.st) }}</div></div>
+      <div class="tiles grid-cols-2">
+        <div><div class="label">Расстояние</div><div class="tile-value">{{ num(total.km, 1) }} <span class="tile-unit">км</span></div></div>
+        <div><div class="label">Поездок</div><div class="tile-value">{{ trips.length }}</div></div>
+        <div><div class="label">Расход</div><div class="tile-value">{{ num(total.l100, 1) }} <span class="tile-unit">л/100</span></div></div>
+        <div><div class="label">Топливо</div><div class="tile-value">{{ liters(total.l) }} <span class="tile-unit">л</span></div></div>
+        <div><div class="label">Стоимость</div><div class="tile-value">{{ int(total.cost) }} <span class="tile-unit">₽</span></div></div>
+        <div><div class="label">Ср. / макс. км/ч</div><div class="tile-value">{{ num(total.avg, 0) }} <span class="tile-unit">/ {{ num(total.max, 0) }}</span></div></div>
+        <div class="col-span-2 !p-0">
+          <div class="grid grid-cols-3 gap-px bg-night-600">
+            <div class="bg-night-800 p-3"><div class="label">Всего</div><div class="font-mono text-base font-semibold tabular-nums">{{ span(total.mv + total.st) }}</div></div>
+            <div class="bg-night-800 p-3"><div class="label">В пути</div><div class="font-mono text-base font-semibold tabular-nums">{{ span(total.mv) }}</div></div>
+            <div class="bg-night-800 p-3"><div class="label">Стоянка</div><div class="font-mono text-base font-semibold tabular-nums">{{ span(total.st) }}</div></div>
+          </div>
         </div>
       </div>
 
@@ -71,25 +86,26 @@ function wipe(): void {
 
       <article v-for="t in trips" :key="t.id" class="card p-3">
         <div class="mb-2 flex items-baseline justify-between gap-2">
-          <span class="font-mono text-sm">{{ dateTime(t.start) }}</span>
+          <span class="font-mono text-sm">{{ dateTime(t.start) }}<template v-if="t.id !== 'live'"> – {{ time(t.end) }}</template></span>
           <span v-if="t.id === 'live'" class="label text-ok">идёт</span>
-          <span v-else class="font-mono text-xs text-[#7b8696]">{{ duration(t.end - t.start) }}</span>
+          <span v-else class="font-mono text-xs muted">{{ span(t.end - t.start) }}</span>
         </div>
         <dl class="grid grid-cols-4 gap-2 text-center">
-          <div><dt class="label">км</dt><dd class="font-mono text-lg">{{ num(t.distanceKm, 1) }}</dd></div>
-          <div><dt class="label">км/ч</dt><dd class="font-mono text-lg">{{ num(tripAvgSpeed(t), 0) }}</dd></div>
-          <div><dt class="label">л/100</dt><dd class="font-mono text-lg">{{ num(tripConsumption(t), 1) }}</dd></div>
-          <div><dt class="label">₽</dt><dd class="font-mono text-lg">{{ num(t.fuelL * garage.fuelPrice, 0) }}</dd></div>
+          <div><dt class="label">км</dt><dd class="font-mono text-lg tabular-nums">{{ num(t.distanceKm, 1) }}</dd></div>
+          <div><dt class="label">ср. км/ч</dt><dd class="font-mono text-lg tabular-nums">{{ num(tripAvgSpeed(t), 0) }}</dd></div>
+          <div><dt class="label">л/100</dt><dd class="font-mono text-lg tabular-nums">{{ num(tripConsumption(t), 1) }}</dd></div>
+          <div><dt class="label">₽</dt><dd class="font-mono text-lg tabular-nums">{{ t.fuelL > 0 ? num(t.fuelL * garage.fuelPrice, 0) : '—' }}</dd></div>
         </dl>
         <div class="mt-2 flex items-center gap-2">
-          <span v-if="t.events?.length" class="flex h-6 w-6 items-center justify-center border border-bad font-mono text-sm font-bold text-bad" title="Загоралась лампа Check Engine">!</span>
-          <RouterLink v-if="t.hasTrack" :to="`/trip/${t.id}`" class="btn-ghost mr-auto !px-3 !py-2 !text-xs">Карта и данные</RouterLink>
-          <span v-else class="mr-auto text-xs text-[#5f6978]">без трека (нет GPS)</span>
-          <button v-if="t.id !== 'live'" class="text-xs text-[#7b8696] underline" @click="askDelete(t.id)">удалить</button>
+          <span v-if="t.events?.length" class="mil h-6 w-6 !border text-sm" title="Загоралась лампа Check Engine">!</span>
+          <RouterLink v-if="t.hasTrack" :to="`/trip/${t.id}`" class="btn-ghost btn-sm">Карта и данные</RouterLink>
+          <span v-else class="text-xs text-[#5f6978]">без трека</span>
+          <span v-if="t.source" class="font-mono text-[10px] uppercase tracking-wider text-[#5f6978]">{{ sourceText[t.source] }}</span>
+          <button v-if="t.id !== 'live'" class="link ml-auto" @click="askDelete(t.id)">удалить</button>
         </div>
       </article>
 
-      <button class="btn-ghost w-full" @click="wipe">Очистить историю</button>
+      <button v-if="mine.length" class="btn-ghost w-full" @click="wipe">Очистить историю</button>
     </template>
   </section>
 </template>
