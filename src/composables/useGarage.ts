@@ -1,5 +1,7 @@
 import { reactive, watch } from 'vue'
 import { carTitle, newCar, type Car } from '@/services/Cars'
+import type { Expense } from '@/services/Expenses'
+import { itemStatus, type ServiceItem } from '@/services/Maintenance'
 import { DEFAULT_OIL, oilStatus } from '@/services/OilService'
 import type { TrackPoint } from '@/services/TripAnalysis'
 import { TripSession, type FinishedTrip } from '@/services/TripSession'
@@ -18,6 +20,7 @@ interface Garage {
   cars: Car[]
   activeCarId: string
   trips: Trip[]
+  expenses: Expense[]
 }
 
 function read<T>(key: string): T | null {
@@ -42,14 +45,15 @@ function load(): Garage {
   const saved = read<Partial<Garage>>(KEY)
   let base: Garage
   if (saved?.cars?.length) {
-    base = { fuelPrice: 65, cars: [], activeCarId: '', trips: [], ...saved } as Garage
+    base = { fuelPrice: 65, cars: [], activeCarId: '', trips: [], expenses: [], ...saved } as Garage
+    if (!Array.isArray(base.expenses)) base.expenses = []
     // odometerTrackedAt появился позже: у старых профилей отсчёт оценки одометра начинаем с текущего момента.
     base.cars = base.cars.map((c) => newCar({ ...c, id: c.id, oil: { ...DEFAULT_OIL, ...c.oil }, odometerTrackedAt: c.odometerTrackedAt ?? c.trackedTotalKm ?? 0 }))
   } else {
     // Миграция с версии с одной машиной: её масло, пробег и поездки переходят в первую машину.
     const old = read<{ fuelPrice?: number; oil?: Car['oil']; trackedTotalKm?: number; trips?: Trip[] }>(OLD_KEY)
     const car = newCar({ name: 'ВАЗ-2104', make: 'ВАЗ', model: '2104', oil: { ...DEFAULT_OIL, ...old?.oil }, trackedTotalKm: old?.trackedTotalKm ?? 0 })
-    base = { fuelPrice: old?.fuelPrice ?? 65, cars: [car], activeCarId: car.id, trips: (old?.trips ?? []).map((t) => ({ ...t, carId: car.id })) }
+    base = { fuelPrice: old?.fuelPrice ?? 65, cars: [car], activeCarId: car.id, trips: (old?.trips ?? []).map((t) => ({ ...t, carId: car.id })), expenses: [] }
   }
   if (!base.cars.some((c) => c.id === base.activeCarId)) base.activeCarId = base.cars[0].id
 
@@ -130,6 +134,7 @@ watch(() => garage.fuelPrice, saveNow)
 watch(() => garage.activeCarId, saveNow)
 // Правки профилей машин сохраняем с задержкой (поля вводятся по символу).
 watch(() => garage.cars, scheduleSave, { deep: true })
+watch(() => garage.expenses, scheduleSave, { deep: true })
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { saveNow(); flushActive() }
@@ -208,6 +213,50 @@ export function useGarage() {
       garage.trips = garage.trips.filter((t) => t.carId !== id)
       garage.cars = garage.cars.filter((c) => c.id !== id)
       if (garage.activeCarId === id) garage.activeCarId = garage.cars[0].id
+      saveNow()
+    },
+    /** Расходы активной машины (новые сверху). */
+    expenses: (): Expense[] => garage.expenses.filter((e) => e.carId === activeCar().id).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
+    addExpense(e: Omit<Expense, 'id' | 'carId'>): Expense {
+      const x: Expense = { ...e, id: `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, carId: activeCar().id }
+      garage.expenses.push(x)
+      saveNow()
+      return x
+    },
+    updateExpense(id: string, e: Omit<Expense, 'id' | 'carId'>): void {
+      const i = garage.expenses.findIndex((x) => x.id === id)
+      if (i >= 0) { garage.expenses[i] = { ...e, id, carId: garage.expenses[i].carId }; saveNow() }
+    },
+    removeExpense(id: string): void {
+      garage.expenses = garage.expenses.filter((x) => x.id !== id)
+      saveNow()
+    },
+    /** Позиции обслуживания активной машины со статусом. */
+    serviceItems: () => activeCar().services.map((it) => ({ it, st: itemStatus(it, activeCar().trackedTotalKm) })),
+    /** Отметить замену: дата, пробег с замены (обычно 0) и, при желании, новый интервал. */
+    markServiced(id: string, dateISO: string, sinceKm = 0, intervalKm?: number): void {
+      const c = activeCar()
+      const it = c.services.find((x) => x.id === id)
+      if (!it) return
+      it.dateISO = dateISO
+      it.offsetKm = Math.max(0, finite(sinceKm, 0))
+      it.trackedAtSet = c.trackedTotalKm
+      if (intervalKm != null) it.intervalKm = Math.min(500000, Math.max(500, finite(intervalKm, it.intervalKm)))
+      saveNow()
+    },
+    addServiceItem(name: string, intervalKm: number, months?: number): ServiceItem {
+      const it: ServiceItem = { id: `s${Date.now().toString(36)}`, name: name.trim() || 'Позиция', intervalKm: Math.min(500000, Math.max(500, finite(intervalKm, 10000))), months, dateISO: null, offsetKm: 0, trackedAtSet: 0 }
+      activeCar().services.push(it)
+      saveNow()
+      return it
+    },
+    removeServiceItem(id: string): void {
+      const c = activeCar()
+      c.services = c.services.filter((x) => x.id !== id)
+      saveNow()
+    },
+    setLastDiag(count: number): void {
+      activeCar().lastDiag = { at: Date.now(), count }
       saveNow()
     },
     carName: (id?: string): string => {

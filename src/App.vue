@@ -1,82 +1,80 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import AppIcon from '@/components/AppIcon.vue'
+import DrawerMenu from '@/components/DrawerMenu.vue'
 import OnboardingWizard from '@/components/OnboardingWizard.vue'
-import { useGarage } from '@/composables/useGarage'
 import { useUpdate } from '@/composables/useUpdate'
+import { drawerOpen, showWizard, useUi } from '@/composables/useUi'
 import { useVehicle } from '@/composables/useVehicle'
-import { carShort } from '@/services/Cars'
 
 const v = useVehicle()
-const { car } = useGarage()
 const route = useRoute()
 const up = useUpdate()
-const showSetup = ref(!v.prefs.onboarded)
+useUi()
+showWizard.value = !v.prefs.onboarded
 const tabs = [
-  { to: '/', label: 'Панель' },
-  { to: '/sensors', label: 'Датчики' },
-  { to: '/diagnostics', label: 'Ошибки' },
-  { to: '/performance', label: '0–100' },
-  { to: '/stats', label: 'Поездки' },
-  { to: '/service', label: 'Сервис' },
+  { to: '/', label: 'Главная', icon: 'home' },
+  { to: '/monitor', label: 'Монитор', icon: 'monitor' },
+  { to: '/diagnostics', label: 'Ошибки', icon: 'warn' },
+  { to: '/stats', label: 'Поездки', icon: 'route' },
+  { to: '/service', label: 'Журнал', icon: 'wallet' },
 ]
+const bar = computed(() => (route.meta.bar as string | undefined) ?? 'none')
 /** Карта поездки — часть раздела «Поездки»: вкладка должна оставаться подсвеченной. */
 const activeTab = computed(() => (route.path.startsWith('/trip') ? '/stats' : route.path))
 onMounted(() => { v.autoStart(); void up.check() })
-const viaText = { ble: 'BLUETOOTH', wifi: 'WI-FI', mock: 'ДЕМО' } as const
-const statusText = computed(() => {
-  if (v.status.value === 'connecting') return (v.note.value ?? 'Подключение…').toUpperCase()
-  if (v.status.value !== 'connected') return 'НЕТ СВЯЗИ'
-  return v.ecuSilent.value ? 'ЭБУ МОЛЧИТ · ЗАЖИГАНИЕ?' : `НА СВЯЗИ · ${viaText[v.via.value ?? 'mock']}`
+const viaText = { ble: 'Bluetooth', wifi: 'Wi-Fi', mock: 'Демо' } as const
+const pill = computed(() => {
+  if (v.status.value === 'connecting') return { text: 'Подключение…', dot: 'bg-accent animate-pulse' }
+  if (v.status.value !== 'connected') return { text: 'Нет связи', dot: 'bg-faint' }
+  if (v.ecuSilent.value) return { text: 'ЭБУ молчит', dot: 'bg-warn' }
+  return { text: viaText[v.via.value ?? 'mock'], dot: 'bg-ok' }
 })
-const dot = computed(() => (v.status.value === 'connected' ? (v.ecuSilent.value ? 'bg-warn' : 'bg-ok') : v.status.value === 'connecting' ? 'bg-accent' : 'bg-[#4a5260]'))
+const hint = computed(() => (v.status.value === 'connecting' ? v.note.value : v.ecuSilent.value ? 'Адаптер на связи, но ЭБУ не отвечает — включите зажигание.' : null))
 </script>
 
 <template>
   <div class="mx-auto flex h-full max-w-3xl flex-col">
-    <header class="border-b border-night-600 px-3 py-2">
-      <div class="flex items-center gap-2">
-        <RouterLink to="/garage" class="mr-auto min-w-0 truncate py-1 text-sm font-semibold uppercase tracking-[0.12em]" title="Профили автомобилей">
-          {{ carShort(car()) }} <span class="muted">▾</span>
+    <header v-if="bar !== 'none'" class="shrink-0 px-3 pb-1 pt-2">
+      <div class="flex h-11 items-center gap-1">
+        <button class="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-night-700" aria-label="Меню" @click="drawerOpen = true"><AppIcon name="menu" /></button>
+        <h1 v-if="bar === 'home'" class="flex-1 text-xl font-black tracking-[0.18em]"><span class="text-ink">MY</span><span class="text-accent">OLDCAR</span></h1>
+        <h1 v-else class="min-w-0 flex-1 truncate text-lg font-bold">{{ route.meta.title }}</h1>
+        <RouterLink v-if="v.milOn.value" to="/diagnostics" class="mil h-9 w-9 text-lg" aria-label="Горит Check Engine — открыть ошибки">!</RouterLink>
+        <RouterLink to="/connection" class="flex h-9 items-center gap-2 rounded-full border border-night-600 bg-night-800 px-3 text-xs font-semibold text-soft shadow-card active:bg-night-700" title="Подключение сканера">
+          <span class="h-2.5 w-2.5 rounded-full" :class="pill.dot" />{{ pill.text }}
         </RouterLink>
-        <RouterLink v-if="v.milOn.value" to="/diagnostics" class="mil h-9 w-9 text-lg" title="Горит Check Engine" aria-label="Горит Check Engine — открыть ошибки">!</RouterLink>
-        <button v-if="v.status.value === 'disconnected'" class="btn btn-sm h-9" @click="v.connect()">Подключить</button>
-        <button v-else class="btn-ghost btn-sm h-9" @click="v.disconnect()">{{ v.status.value === 'connecting' ? 'Отмена' : 'Отключить' }}</button>
-        <button class="flex h-9 w-9 shrink-0 items-center justify-center border border-night-600 text-[#c3cad5] active:bg-night-700" title="Настройки" aria-label="Настройки" @click="showSetup = true">
-          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true">
-            <path d="M3 7h9M18 7h3M3 17h3M12 17h9" /><rect x="12" y="4" width="6" height="6" /><rect x="6" y="14" width="6" height="6" />
-          </svg>
-        </button>
       </div>
-      <div class="mt-1 flex items-center gap-2 font-mono text-[11px] text-[#7b8696]">
-        <span class="inline-block h-2 w-2 shrink-0" :class="dot" />
-        <span class="min-w-0 truncate">{{ statusText }}</span>
-        <span v-if="v.tripActive.value" class="ml-auto shrink-0 text-ok">● ЗАПИСЬ ПОЕЗДКИ</span>
-      </div>
-      <button v-if="v.error.value" class="mt-1 flex w-full items-start gap-2 text-left font-mono text-xs text-bad" title="Скрыть" @click="v.clearError()">
-        <span class="min-w-0 flex-1 break-words">{{ v.error.value }}</span><span class="muted shrink-0" aria-hidden="true">✕</span>
-      </button>
     </header>
 
-    <div v-if="up.update.value" class="flex items-center gap-2 border-b border-night-600 bg-night-800 px-4 py-2 text-xs">
-      <span class="mr-auto">Доступна версия <span class="font-mono text-ok">{{ up.update.value.version }}</span></span>
-      <button class="btn !px-3 !py-1.5 !text-[11px]" @click="up.install()">Обновить</button>
+    <p v-if="hint && bar !== 'none'" class="mx-3 mb-1 rounded-xl bg-accent-soft px-3 py-2 text-xs text-soft">{{ hint }}</p>
+    <button v-if="v.error.value" class="mx-3 mb-1 flex items-start gap-2 rounded-xl border border-bad/40 bg-bad/10 px-3 py-2 text-left text-xs text-bad" title="Скрыть" @click="v.clearError()">
+      <span class="min-w-0 flex-1 break-words">{{ v.error.value }}</span><AppIcon name="close" :size="16" />
+    </button>
+    <div v-if="up.update.value && bar !== 'none'" class="mx-3 mb-1 flex items-center gap-2 rounded-xl bg-accent-soft px-3 py-2 text-xs">
+      <span class="mr-auto text-soft">Доступна версия <b class="text-accent">{{ up.update.value.version }}</b></span>
+      <button class="btn btn-sm" @click="up.install()">Обновить</button>
     </div>
 
-    <main class="min-h-0 flex-1 overflow-y-auto p-3">
-      <RouterView />
+    <main class="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3" :class="bar === 'none' ? 'pt-3' : 'pt-1'">
+      <RouterView v-slot="{ Component }">
+        <Transition name="page" mode="out-in"><component :is="Component" /></Transition>
+      </RouterView>
     </main>
 
-    <OnboardingWizard v-if="showSetup" @done="showSetup = false" />
+    <DrawerMenu />
+    <OnboardingWizard v-if="showWizard" @done="showWizard = false" />
 
-    <nav class="grid grid-cols-6 border-t border-night-600 bg-night-900 pb-[env(safe-area-inset-bottom)]">
-      <RouterLink
-        v-for="t in tabs" :key="t.to" :to="t.to"
-        class="border-t-2 py-3 text-center text-[9px] font-semibold uppercase tracking-[0.1em]"
-        :class="activeTab === t.to ? 'border-accent text-[#d5dae2]' : 'border-transparent text-[#7b8696]'"
-      >
-        {{ t.label }}
+    <nav v-if="bar !== 'none'" class="grid shrink-0 grid-cols-5 border-t border-night-600 bg-night-800 pb-[env(safe-area-inset-bottom)]" aria-label="Разделы">
+      <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="flex flex-col items-center gap-0.5 pb-2 pt-2.5 text-[11px] font-semibold transition-colors" :class="activeTab === t.to ? 'text-accent' : 'text-faint'">
+        <AppIcon :name="t.icon" :size="24" />{{ t.label }}
       </RouterLink>
     </nav>
   </div>
 </template>
+
+<style>
+.page-enter-active, .page-leave-active { transition: opacity 0.12s ease; }
+.page-enter-from, .page-leave-to { opacity: 0; }
+</style>

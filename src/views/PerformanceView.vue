@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '@/components/PageHeader.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import RpmChart from '@/components/RpmChart.vue'
 import { useGarage } from '@/composables/useGarage'
@@ -96,10 +97,11 @@ const hint = computed(() => {
 
 <template>
   <section class="space-y-2">
+    <PageHeader title="Замер 0–100" />
     <div class="card p-5 text-center">
       <div class="label">0 → 100 км/ч</div>
-      <div class="my-2 font-mono text-7xl font-semibold tabular-nums leading-none" :class="result ? 'text-ok' : 'text-[#d5dae2]'">{{ seconds }}<span class="text-3xl muted"> с</span></div>
-      <div class="font-mono text-2xl tabular-nums text-[#aab3c0]">{{ num(speed) }} км/ч</div>
+      <div class="my-2 font-mono text-7xl font-semibold tabular-nums leading-none" :class="result ? 'text-ok' : 'text-ink'">{{ seconds }}<span class="text-3xl muted"> с</span></div>
+      <div class="font-mono text-2xl tabular-nums text-soft">{{ num(speed) }} км/ч</div>
       <div class="mt-2 text-sm" :class="armed && waitingForStop && state === 'idle' ? 'text-warn' : 'muted'">{{ hint }}</div>
     </div>
 
@@ -108,7 +110,7 @@ const hint = computed(() => {
       <button class="btn-ghost" :disabled="!armed" @click="stop">Стоп</button>
     </div>
 
-    <div v-if="result?.warnings.length" class="border border-warn p-3 text-sm text-warn">
+    <div v-if="result?.warnings.length" class="rounded-xl border border-warn p-3 text-sm text-warn">
       <p v-for="w in result.warnings" :key="w">{{ w }}: обороты росли, а скорость стояла на месте.</p>
     </div>
 
@@ -126,6 +128,6 @@ const hint = computed(() => {
         </div>
       </dl>
     </div>
-    <p class="text-xs text-[#5f6978]">Точность ограничена частотой опроса адаптера (несколько раз в секунду) — сравнивайте результаты между собой, а не с паспортными. Замеряйте только там, где это безопасно и разрешено.</p>
+    <p class="text-xs text-faint">Точность ограничена частотой опроса адаптера (несколько раз в секунду) — сравнивайте результаты между собой, а не с паспортными. Замеряйте только там, где это безопасно и разрешено.</p>
   </section>
 </template>

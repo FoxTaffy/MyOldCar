@@ -29,6 +29,6 @@ const pos = computed(() => {
 <template>
   <svg viewBox="0 0 100 8" preserveAspectRatio="none" class="h-2 w-full" role="presentation">
     <rect v-for="s in segs" :key="s.x" :x="s.x" y="2" :width="s.w" height="4" :fill="FILL[s.level]" opacity="0.35" />
-    <rect v-if="pos != null" :x="Math.min(98.6, Math.max(0, pos - 0.7))" y="0" width="1.4" height="8" fill="#e8ecf2" />
+    <rect v-if="pos != null" :x="Math.min(98.6, Math.max(0, pos - 0.7))" y="0" width="1.4" height="8" fill="rgb(var(--ink))" />
   </svg>
 </template>

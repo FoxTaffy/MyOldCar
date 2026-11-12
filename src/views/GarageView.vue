@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import AddCarSheet from '@/components/AddCarSheet.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { CAR_PRESETS, carTitle, currentOdometer, type Car } from '@/services/Cars'
@@ -20,10 +22,13 @@ const busy = ref<'ecu' | 'cam' | 'web' | null>(null)
 
 const say = (m: string, bad = false): void => { msg.value = m; msgBad.value = bad }
 
-function add(): void {
-  const c = addCar({ name: `Машина ${garage.cars.length + 1}` })
+const wizard = ref(false)
+function add(): void { wizard.value = true }
+function created(init: Partial<Car>): void {
+  wizard.value = false
+  const c = addCar({ name: `Машина ${garage.cars.length + 1}`, ...init })
   editing.value = c.id
-  say('Добавлена новая машина — заполните данные или выберите шаблон')
+  say('Автомобиль добавлен — дополните данные, если нужно')
 }
 
 function remove(c: Car): void {
@@ -132,10 +137,10 @@ const fuels = ['', 'АИ-92', 'АИ-95', 'АИ-98', 'ДТ', 'Газ'] as const
 
 <template>
   <section class="space-y-2">
-    <div class="flex items-center justify-between">
-      <h2 class="label">Мои автомобили</h2>
-      <button class="btn btn-sm" @click="add">+ Добавить</button>
-    </div>
+    <PageHeader title="Мои автомобили">
+      <template #right><button class="flex h-11 w-11 items-center justify-center rounded-full text-accent active:bg-night-700" aria-label="Добавить автомобиль" @click="add"><span class="text-3xl leading-none">+</span></button></template>
+    </PageHeader>
+    <AddCarSheet v-if="wizard" @close="wizard = false" @done="created" />
 
     <div class="space-y-2">
       <article v-for="c in garage.cars" :key="c.id" class="card flex items-center gap-3 p-3" :class="c.id === garage.activeCarId ? '!border-accent' : ''">
@@ -144,7 +149,7 @@ const fuels = ['', 'АИ-92', 'АИ-95', 'АИ-98', 'ДТ', 'Газ'] as const
           <span class="block truncate font-mono text-xs muted">
             {{ [c.year, c.plate, c.displacementL ? c.displacementL + ' л' : '', c.powerHp ? c.powerHp + ' л.с.' : ''].filter(Boolean).join(' · ') || 'без данных' }}
           </span>
-          <span class="block truncate font-mono text-xs text-[#5f6978]">{{ currentOdometer(c) != null ? `одометр ≈ ${int(currentOdometer(c))} км · ` : '' }}записано приложением: {{ int(c.trackedTotalKm) }} км</span>
+          <span class="block truncate font-mono text-xs text-faint">{{ currentOdometer(c) != null ? `одометр ≈ ${int(currentOdometer(c))} км · ` : '' }}записано приложением: {{ int(c.trackedTotalKm) }} км</span>
         </button>
         <span v-if="c.id === garage.activeCarId" class="label text-ok">активна</span>
         <button v-else class="btn-ghost btn-sm" @click="pick(c)">Выбрать</button>
@@ -176,7 +181,7 @@ const fuels = ['', 'АИ-92', 'АИ-95', 'АИ-98', 'ДТ', 'Газ'] as const
         <label class="text-xs muted">Кузов<input v-model="edited.body" class="field mt-1" /></label>
       </div>
 
-      <div class="space-y-2 border border-night-600 p-3">
+      <div class="rounded-xl space-y-2 border border-night-600 p-3">
         <div class="label">VIN</div>
         <input v-model="edited.vin" maxlength="24" placeholder="17 знаков" class="field uppercase tracking-wider" autocapitalize="characters" spellcheck="false" />
         <div class="grid grid-cols-2 gap-2">
@@ -195,7 +200,7 @@ const fuels = ['', 'АИ-92', 'АИ-95', 'АИ-98', 'ДТ', 'Газ'] as const
             <button class="btn-ghost btn-sm" @click="useDecoded">Применить к профилю</button>
             <button class="btn-ghost btn-sm" :disabled="busy !== null" @click="online">{{ busy === 'web' ? 'Запрос…' : 'Найти в базе NHTSA' }}</button>
           </div>
-          <p v-if="vinInfo.valid" class="text-[11px] text-[#5f6978]">«Найти в базе» отправляет VIN на vpic.nhtsa.dot.gov — только по этой кнопке.</p>
+          <p v-if="vinInfo.valid" class="text-[11px] text-faint">«Найти в базе» отправляет VIN на vpic.nhtsa.dot.gov — только по этой кнопке.</p>
         </div>
       </div>
 
@@ -216,7 +221,7 @@ const fuels = ['', 'АИ-92', 'АИ-95', 'АИ-98', 'ДТ', 'Газ'] as const
         <label class="col-span-2 text-xs muted">Заметки<textarea v-model="edited.notes" rows="3" class="field mt-1 font-sans" /></label>
       </div>
 
-      <p class="text-xs text-[#5f6978]">Изменения сохраняются автоматически. У каждой машины свои поездки, масло и счётчик пробега; новые поездки пишутся на активную машину.</p>
+      <p class="text-xs text-faint">Изменения сохраняются автоматически. У каждой машины свои поездки, масло и счётчик пробега; новые поездки пишутся на активную машину.</p>
       <button class="btn w-full" @click="router.push('/')">Готово</button>
     </div>
   </section>
