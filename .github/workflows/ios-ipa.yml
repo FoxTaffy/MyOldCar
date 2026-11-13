@@ -1,0 +1,79 @@
+name: iOS IPA
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Приложить .ipa к релизу vX.Y.Z (версия из package.json)'
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm version --no-git-tag-version "${GITHUB_REF_NAME#v}"
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      # Папка ios/ не хранится в репозитории — генерируем при сборке.
+      - run: npx cap add ios
+      - run: npx cap sync ios
+      - run: node scripts/patch-ios.mjs
+
+      # Без подписи: сертификат Apple не нужен. Подписывает уже сам пользователь (AltStore / Sideloadly / TrollStore).
+      - name: Build unsigned archive
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          xcodebuild archive \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/MyOldCar.xcarchive" \
+            MARKETING_VERSION="$VER" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R "$RUNNER_TEMP/MyOldCar.xcarchive/Products/Applications/App.app" Payload/
+          zip -qry MyOldCar.ipa Payload
+          ls -lh MyOldCar.ipa
+
+      - name: Read version
+        id: ver
+        run: echo "v=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # Тот же релиз, что и у APK (тег vX.Y.Z): .ipa добавляется к нему вторым файлом.
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release || github.ref_name == github.event.repository.default_branch || contains(github.event.head_commit.message, '[release]')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          files: MyOldCar.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyOldCar-unsigned-ipa
+          path: MyOldCar.ipa
+          if-no-files-found: error

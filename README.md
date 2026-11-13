@@ -4,6 +4,8 @@ Vue 3 + Vite + TypeScript + Tailwind + Capacitor. ELM327 (Wi-Fi/Bluetooth LE). �
 
 **Скачать APK:** [последняя версия](https://github.com/FoxTaffy/MyOldCar/releases/latest/download/MyOldCar.apk) — ссылка всегда ведёт на свежую сборку из основной ветки. Новые версии ставятся поверх установленной (подпись постоянная), а само приложение предложит обновиться (Настройки → «О приложении»).
 
+**iPhone (.ipa):** [MyOldCar.ipa](https://github.com/FoxTaffy/MyOldCar/releases/latest/download/MyOldCar.ipa) — сборка **без подписи** (платный сертификат Apple не нужен). Установка: AltStore, Sideloadly или TrollStore подписывают её вашим Apple ID; с бесплатным ID подпись действует 7 дней. Фоновые режимы (геопозиция, Bluetooth) и описания разрешений добавляет `scripts/patch-ios.mjs`.
+
 ```bash
 npm install
 npm run dev     # браузер, режим Mock (симуляция ЭБУ, ошибка P0171)
