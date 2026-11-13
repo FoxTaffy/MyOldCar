@@ -242,3 +242,70 @@ describe('Только чтение', () => {
     expect((ELMService.prototype as unknown as Record<string, unknown>).clearDtcs).toBeUndefined()
   })
 })
+
+
+describe('BLE: стабильность', () => {
+  const okSvc = [svc('0000fff0-0000-1000-8000-00805f9b34fb', [['fff1', { notify: true }], ['fff2', { write: true }]])]
+  const base = (): BleLike => ({
+    connect: async () => {}, disconnect: async () => {}, getServices: async () => okSvc,
+    startNotifications: async () => {}, stopNotifications: async () => {}, write: async () => {}, writeWithoutResponse: async () => {},
+  })
+
+  it('отмена во время подключения останавливает повторы и освобождает GATT', async () => {
+    const log: string[] = []
+    let t!: BleTransport
+    const fake: BleLike = {
+      ...base(),
+      connect: async () => { log.push('connect'); void t.close(); throw new Error('status 133') },
+      disconnect: async () => { log.push('disconnect') },
+    }
+    t = new BleTransport('x', fake, { retryMs: 1, scanMs: 1, settleMs: 0 })
+    await expect(t.connect()).rejects.toThrow(/отменено/)
+    expect(log.filter((l) => l === 'connect')).toHaveLength(1)
+    expect(log).toContain('disconnect')
+  })
+
+  it('скан делается один раз, а не перед каждой попыткой', async () => {
+    let scans = 0, n = 0
+    const fake: BleLike = {
+      ...base(),
+      requestLEScan: async (_o, cb) => { scans++; setTimeout(() => cb({ device: { deviceId: 'x' } } as never), 1) },
+      stopLEScan: async () => {},
+      connect: async () => { if (++n < 3) throw new Error('status 133') },
+    }
+    await new BleTransport('x', fake, { retryMs: 1, settleMs: 0 }).connect()
+    expect(scans).toBe(1)
+  })
+
+  it('потеря связи мгновенно обрывает ожидающую команду, а не ждёт таймаут', async () => {
+    let dropped: (id: string) => void = () => {}
+    const fake: BleLike = { ...base(), connect: async (_i, cb) => { dropped = cb ?? (() => {}) } }
+    const elm = new ELMService(new BleTransport('x', fake, { settleMs: 0 }), { host: '', port: 0, timeoutMs: 5000 })
+    elm.connected = true
+    await (elm as unknown as { transport: BleTransport }).transport.connect()
+    const p = elm.send('010C')
+    const t0 = Date.now()
+    dropped('x')
+    await expect(p).rejects.toThrow(/потеряна/)
+    expect(Date.now() - t0).toBeLessThan(500)
+  })
+
+  it('запоздалый ответ на прошлую команду не принимается за ответ на следующую', async () => {
+    let cb: (s: string) => void = () => {}
+    let first = true
+    const t: Transport = {
+      connect: async () => {}, close: async () => {}, onData: (f) => { cb = f },
+      write: async (data) => {
+        const cmd = data.replace(/\r/g, '').trim()
+        if (cmd === '010C' && first) { first = false; setTimeout(() => cb('41 0C 1A F8\r\r>'), 120); return } // ответ опоздал
+        if (cmd === 'ATI') setTimeout(() => cb('ELM327 v1.5\r\r>'), 160)
+        else if (cmd === '010D') setTimeout(() => cb('41 0D 3C\r\r>'), 1)
+        else if (cmd === '010C') setTimeout(() => cb('41 0C 0F A0\r\r>'), 1)
+      },
+    }
+    const elm = new ELMService(t, { host: '', port: 0, timeoutMs: 60 })
+    await expect(elm.readRpm()).rejects.toThrow(/Таймаут/)
+    expect(await elm.readSpeed()).toBe(60) // не 1726/«41 0C…» из опоздавшего ответа
+    expect(await elm.readRpm()).toBe(1000)
+  })
+})
