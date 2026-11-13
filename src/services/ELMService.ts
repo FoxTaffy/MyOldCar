@@ -190,58 +190,84 @@ export class BleTransport implements Transport {
   private closeCb: () => void = () => {}
   private chars: ElmChars | null = null
   private manual = false
+  /** Номер попытки подключения: close() увеличивает его, и цикл повторов сразу прекращается. */
+  private epoch = 0
   private decoder = new TextDecoder()
 
   constructor(
     private readonly deviceId: string,
     private readonly ble: BleLike = BleClient as unknown as BleLike,
-    private readonly opts: { attempts?: number; retryMs?: number; scanMs?: number } = {},
+    private readonly opts: { attempts?: number; retryMs?: number; scanMs?: number; settleMs?: number; log?: (msg: string) => void } = {},
   ) {}
 
   private get attempts(): number { return this.opts.attempts ?? 3 }
   private get retryMs(): number { return this.opts.retryMs ?? 1200 }
   private get scanMs(): number { return this.opts.scanMs ?? 4000 }
+  private log(msg: string): void { this.opts.log?.(msg) }
 
-  /** Короткое сканирование: Android надёжнее подключается к устройству, которое только что «видел». */
-  private async refresh(): Promise<void> {
+  /** Короткое сканирование: Android надёжнее подключается к устройству, которое только что «видел». Выходит сразу, как адаптер найден или попытку отменили. */
+  private async refresh(cancelled: () => boolean): Promise<void> {
     const { ble, deviceId } = this
     if (!ble.requestLEScan || !ble.stopLEScan) return
+    let found = false
     await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, this.scanMs)
+      const done = (): void => { clearTimeout(timer); clearInterval(watch); resolve() }
+      const timer = setTimeout(done, this.scanMs)
+      const watch = setInterval(() => { if (cancelled()) done() }, 150)
       ble.requestLEScan!({}, (r) => {
-        if (r.device.deviceId === deviceId) { clearTimeout(timer); resolve() }
-      }).catch(() => { clearTimeout(timer); resolve() })
+        if (r.device.deviceId === deviceId) { found = true; done() }
+      }).catch(done)
     })
+    this.log(found ? 'Адаптер найден при сканировании' : 'Адаптер не появился в эфире за время сканирования — пробуем подключиться напрямую')
     await ble.stopLEScan().catch(() => undefined)
   }
 
   async connect(): Promise<void> {
     this.manual = false
+    const epoch = ++this.epoch
+    const cancelled = (): boolean => this.epoch !== epoch
+    const cancelErr = (): Error => new Error('Подключение отменено')
     // Без initialize() Android не выдаёт разрешения и не поднимает BLE-стек (после перезапуска приложения).
     await this.ble.initialize?.()
     let lastErr: unknown
     for (let attempt = 1; attempt <= this.attempts; attempt++) {
+      if (cancelled()) throw cancelErr()
       try {
-        await this.refresh()
-        await this.ble.connect(this.deviceId, () => { if (!this.manual) this.closeCb() }, { timeout: 8000 })
+        // Сканируем один раз перед первой попыткой: частые перезапуски скана Android ограничивает.
+        if (attempt === 1) await this.refresh(cancelled)
+        if (cancelled()) throw cancelErr()
+        this.log(`Bluetooth: подключение, попытка ${attempt} из ${this.attempts}`)
+        await this.ble.connect(this.deviceId, () => { if (!this.manual && this.chars) this.closeCb() }, { timeout: 8000 })
+        // Пока шло подключение, пользователь нажал «Отмена» — не оставляем «бесхозное» соединение: адаптер принимает только одного клиента.
+        if (cancelled()) throw cancelErr()
         lastErr = undefined
         break
       } catch (e) {
         lastErr = e
         // Освобождаем зависший GATT-клиент, иначе следующая попытка снова даст 133.
         await this.ble.disconnect(this.deviceId).catch(() => undefined)
+        if (cancelled()) throw cancelErr()
+        this.log(`Bluetooth: попытка ${attempt} не удалась — ${e instanceof Error ? e.message : String(e)}`)
         if (attempt < this.attempts) await new Promise((r) => setTimeout(r, this.retryMs * attempt))
       }
     }
     if (lastErr !== undefined) throw new Error(friendlyBleError(lastErr))
 
-    const chars = pickElmChars(await this.ble.getServices(this.deviceId))
-    if (!chars) {
+    try {
+      const chars = pickElmChars(await this.ble.getServices(this.deviceId))
+      if (!chars) throw new Error('Не найдены характеристики ELM327 у этого Bluetooth-устройства')
+      if (cancelled()) throw cancelErr()
+      this.log('Bluetooth: подписка на уведомления адаптера')
+      await this.ble.startNotifications(this.deviceId, chars.service, chars.notify, (v) => this.cb(this.decoder.decode(v)))
+      this.chars = chars
+      // Даём адаптеру «выдохнуть» после подписки: первая команда сразу после неё на дешёвых модулях теряется.
+      await new Promise((r) => setTimeout(r, this.opts.settleMs ?? 300))
+      if (cancelled()) throw cancelErr()
+    } catch (e) {
+      this.chars = null
       await this.ble.disconnect(this.deviceId).catch(() => undefined)
-      throw new Error('Не найдены характеристики ELM327 у этого Bluetooth-устройства')
+      throw e
     }
-    this.chars = chars
-    await this.ble.startNotifications(this.deviceId, chars.service, chars.notify, (v) => this.cb(this.decoder.decode(v)))
   }
 
   async write(data: string): Promise<void> {
@@ -263,6 +289,7 @@ export class BleTransport implements Transport {
   }
   async close(): Promise<void> {
     this.manual = true
+    this.epoch++
     const c = this.chars
     this.chars = null
     if (c) await this.ble.stopNotifications(this.deviceId, c.service, c.notify).catch(() => undefined)
@@ -542,6 +569,12 @@ export class ELMService {
   private pending: { resolve: (s: string) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null
   private chain: Promise<unknown> = Promise.resolve()
   connected = false
+  /** Прошлая команда осталась без ответа: её запоздалый ответ может прийти вместо ответа на следующую. */
+  private dirty = false
+  /** Транспорт сообщил о разрыве: новые команды сразу получают отказ, а не ждут таймаут. */
+  private closed = false
+  /** Ожидание ответа адаптера на служебную команду ресинхронизации. */
+  private drain: (() => void) | null = null
 
   constructor(
     private readonly transport: Transport,
@@ -550,6 +583,15 @@ export class ELMService {
     transport.onData((chunk) => this.onChunk(chunk))
     transport.onClose?.(() => {
       this.connected = false
+      this.closed = true
+      // Команда, ждущая ответа, не должна висеть до таймаута: связи уже нет.
+      const p = this.pending
+      if (p) {
+        clearTimeout(p.timer)
+        this.pending = null
+        p.reject(new ELMError('Связь с адаптером потеряна'))
+      }
+      this.drain?.()
       this.onLost?.()
     })
   }
@@ -559,7 +601,18 @@ export class ELMService {
 
   private onChunk(chunk: string): void {
     this.buffer += chunk
-    if (!this.buffer.includes('>') || !this.pending) return
+    if (!this.pending) {
+      // Идёт ресинхронизация: запоздалые ответы на прошлые команды выбрасываем, ждём ответ на ATI.
+      if (this.drain && this.buffer.includes('>')) {
+        const end = this.buffer.lastIndexOf('>')
+        const text = this.buffer.slice(0, end)
+        this.buffer = this.buffer.slice(end + 1)
+        if (/ELM|OK|v\d\.\d/i.test(text)) this.drain()
+      }
+      return
+    }
+    if (!this.buffer.includes('>')) return
+    this.dirty = false
     const text = this.buffer.split('>')[0]
     this.buffer = ''
     clearTimeout(this.pending.timer)
@@ -573,11 +626,14 @@ export class ELMService {
     if (!isReadOnlyCommand(cmd)) {
       return Promise.reject(new ELMError(`Команда ${cmd} заблокирована: приложение работает только на чтение`))
     }
-    const run = () =>
-      new Promise<string>((resolve, reject) => {
+    const run = async (): Promise<string> => {
+      if (this.closed) throw new ELMError('Связь с адаптером потеряна')
+      if (this.dirty && cmd.trim() !== '') await this.resync()
+      return new Promise<string>((resolve, reject) => {
         this.buffer = ''
         const timer = setTimeout(() => {
           this.pending = null
+          this.dirty = true
           reject(new ELMError(`Таймаут ответа на ${cmd}`))
         }, timeoutMs)
         this.pending = { resolve, reject, timer }
@@ -587,15 +643,35 @@ export class ELMService {
           reject(e instanceof Error ? e : new ELMError(String(e)))
         })
       })
+    }
     const next = this.chain.then(run, run)
     this.chain = next.catch(() => undefined)
     return next
   }
 
+  /**
+   * После таймаута: отправляем безвредную ATI и ждём именно её ответ, выбрасывая всё, что пришло раньше.
+   * Иначе опоздавший ответ на прошлую команду принимается за ответ на следующую, и показания «съезжают».
+   */
+  private async resync(): Promise<void> {
+    this.dirty = false
+    const ms = Math.min(1500, Math.max(100, this.cfg.timeoutMs / 2))
+    this.buffer = ''
+    await new Promise<void>((resolve) => {
+      const done = (): void => { clearTimeout(timer); this.drain = null; resolve() }
+      const timer = setTimeout(done, ms)
+      this.drain = done
+      this.transport.write('ATI\r').catch(done)
+    })
+    this.buffer = ''
+  }
+
   async connect(): Promise<void> {
+    this.closed = false
     await this.transport.connect()
     this.progress('Сброс адаптера…')
-    await this.send('ATZ', 8000)
+    // Первая команда после подключения по Bluetooth иногда теряется — один повтор вместо провала всей попытки.
+    await this.send('ATZ', 8000).catch(() => this.send('ATZ', 8000))
     // ATE0 — без эха, ATL0 — без переводов строк, ATH0 — без заголовков, ATAT1 — адаптивный таймаут
     // (К-линия отвечает медленнее CAN). Пробелы в ответах не отключаем: разбор к ним устойчив.
     for (const cmd of ['ATE0', 'ATL0', 'ATH0', 'ATAT1']) await this.send(cmd)
@@ -806,6 +882,8 @@ export interface ConnectTarget {
   timeoutMs?: number
   /** Попыток подключения по Bluetooth. */
   attempts?: number
+  /** Журнал этапов подключения. */
+  log?: (msg: string) => void
 }
 
 /** Фабрика сервиса под выбранный способ связи. */
@@ -814,7 +892,7 @@ export function createElmService(t: ConnectTarget): ELMService {
   if (t.kind === 'mock') return new ELMService(new MockTransport(), cfg)
   if (t.kind === 'ble') {
     if (!t.bleId) throw new Error('Bluetooth-адаптер не выбран')
-    return new ELMService(new BleTransport(t.bleId, undefined, t.attempts ? { attempts: t.attempts } : {}), cfg)
+    return new ELMService(new BleTransport(t.bleId, undefined, { ...(t.attempts ? { attempts: t.attempts } : {}), log: t.log }), cfg)
   }
   // В браузере «сырого» TCP нет — остаётся только мост ws:// (для разработки).
   return new ELMService(Capacitor.isNativePlatform() ? new CapacitorTcpTransport(cfg) : new WebSocketTransport(cfg), cfg)

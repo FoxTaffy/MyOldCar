@@ -104,10 +104,18 @@ const IDLE_CHECK_MS = 30_000
 const motion = ref<MotionResult | null>(null)
 /** Автоподключение сдалось (адаптера нет рядом / не отвечает): ждём, пока пользователь нажмёт «Подключить» сам. */
 const awaitingManual = ref(false)
-/** Сколько раз подряд пытались вернуть оборвавшуюся связь. */
-let lostRetries = 0
-/** После обрыва связи пробуем вернуть её столько раз, потом ждём ручного нажатия. */
-const MAX_LOST_RETRIES = 2
+/** Сколько раз подряд автоматически пытались подключиться. */
+let reconnectAttempts = 0
+/** Пауза перед очередной автоматической попыткой растёт до 30 с; после MAX_RECONNECTS неудач ждём ручного нажатия. */
+const RECONNECT_STEPS = [4000, 6000, 10000, 15000, 20000, 30000]
+const MAX_RECONNECTS = 30
+/** Журнал этапов подключения (для экрана «Подключение»): видно, на каком шаге и почему не вышло. */
+const connLog = ref<string[]>([])
+function logConn(msg: string): void {
+  const d = new Date()
+  const t = [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':')
+  connLog.value = [...connLog.value.slice(-79), `${t} ${msg}`]
+}
 
 /** Прогрев двигателя после подключения: уведомление, когда можно ехать. */
 const warmup = new WarmupTracker()
@@ -126,8 +134,7 @@ let manualStop = false
 let pollError = false
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-const RECONNECT_MS = 6000
-const MAX_ERRORS = 4
+const MAX_ERRORS = 3
 const EXTENDED_EVERY = 4
 
 /* ---------- опрос ---------- */
@@ -323,8 +330,8 @@ function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 }
 
 async function tryKind(kind: ConnectionKind): Promise<ELMService> {
-  const svc = createElmService({ kind, host: prefs.host.trim(), port: prefs.port, bleId: prefs.bleId, protocol: prefs.protocol, timeoutMs: prefs.timeoutMs, attempts: prefs.attempts })
-  svc.onProgress = (m) => { note.value = m }
+  const svc = createElmService({ kind, host: prefs.host.trim(), port: prefs.port, bleId: prefs.bleId, protocol: prefs.protocol, timeoutMs: prefs.timeoutMs, attempts: prefs.attempts, log: logConn })
+  svc.onProgress = (m) => { note.value = m; if (m) logConn(m) }
   connecting = svc
   try {
     await withTimeout(svc.connect(), 150000, kind === 'ble' ? 'Bluetooth: адаптер не отвечает' : 'Wi-Fi: адаптер не отвечает')
@@ -353,19 +360,20 @@ function clearReconnect(): void {
 }
 
 /**
- * Повторная попытка только после обрыва уже работавшей связи, и то ограниченное число раз.
- * Если адаптера нет рядом (далеко от машины, выключен, не тот ЭБУ) — не донимаем систему бесконечными попытками:
- * ждём, пока пользователь сам нажмёт «Подключить».
+ * Автоповтор: адаптер часто просыпается позже, чем открыли приложение (зажигание, питание разъёма),
+ * и рвёт связь при просадке напряжения — поэтому пробуем снова с растущей паузой, а не сдаёмся после пары попыток.
  */
-function scheduleReconnect(afterLoss: boolean): void {
+function scheduleReconnect(): void {
   clearReconnect()
   if (manualStop || !prefs.autoConnect || prefs.mode === 'mock' || !prefs.onboarded) return
-  if (!afterLoss || ++lostRetries > MAX_LOST_RETRIES) {
+  if (reconnectAttempts >= MAX_RECONNECTS) {
     awaitingManual.value = true
-    lostRetries = 0
+    reconnectAttempts = 0
     return
   }
-  reconnectTimer = setTimeout(() => { void connect(true) }, RECONNECT_MS)
+  const delay = RECONNECT_STEPS[Math.min(reconnectAttempts, RECONNECT_STEPS.length - 1)]
+  reconnectAttempts++
+  reconnectTimer = setTimeout(() => { void connect(true) }, delay)
 }
 
 function handleLost(msg: string): void {
@@ -384,12 +392,13 @@ function handleLost(msg: string): void {
   clearReadings()
   pollError = false
   error.value = msg
-  scheduleReconnect(true)
+  logConn(`${msg} — переподключаемся`)
+  scheduleReconnect()
 }
 
 async function connect(auto = false): Promise<void> {
   if (status.value !== 'disconnected') return
-  if (!auto) { manualStop = false; lostRetries = 0 }
+  if (!auto) { manualStop = false; reconnectAttempts = 0 }
   awaitingManual.value = false
   clearReconnect()
   const token = ++connectToken
@@ -411,7 +420,8 @@ async function connect(auto = false): Promise<void> {
       note.value = null
       via.value = kind
       status.value = 'connected'
-      lostRetries = 0
+      reconnectAttempts = 0
+      logConn('Подключено')
       // Реальная поездка (по GPS) не должна продолжиться как демо и наоборот.
       if (session.active && session.demo !== (kind === 'mock')) endTrip()
       session.demo = kind === 'mock'
@@ -426,15 +436,16 @@ async function connect(auto = false): Promise<void> {
       return
     } catch (e) {
       if (token !== connectToken) return
+      logConn(`${kind}: ${e instanceof Error ? e.message : String(e)}`)
       errors.push(`${kind === 'ble' ? 'Bluetooth' : kind === 'wifi' ? 'Wi-Fi' : 'Демо'}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
   error.value = errors.join(' · ')
   note.value = null
   status.value = 'disconnected'
-  // Автоматическая попытка не удалась — сразу переходим в режим «ждём ручного подключения».
-  // Повторяем только то, что началось с обрыва связи (см. lostRetries).
-  scheduleReconnect(auto && lostRetries > 0)
+  // Автоматическая попытка не удалась — повторяем с растущей паузой; после ручной — ждём нового нажатия.
+  if (auto) scheduleReconnect()
+  else awaitingManual.value = true
 }
 
 /** Отключиться или отменить идущую попытку подключения. */
@@ -473,7 +484,9 @@ function autoStart(): void {
     // Вернулись в приложение — пробуем сразу, не ждём таймер.
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) void idleCheck()
-      if (!document.hidden && status.value === 'disconnected' && !manualStop && !awaitingManual.value && prefs.autoConnect && prefs.onboarded && prefs.mode !== 'mock') {
+      if (!document.hidden && status.value === 'disconnected' && !manualStop && prefs.autoConnect && prefs.onboarded && prefs.mode !== 'mock') {
+        reconnectAttempts = 0
+        clearReconnect()
         void connect(true)
       }
     })
@@ -488,7 +501,7 @@ const ecuSilent = computed(() => {
 export function useVehicle() {
   return {
     prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, gpsState, gpsFix, gpsError, milOn, tripActive, protocolName, warmupInfo,
-    values, history, connectedAt, ecuStatus, motion, awaitingManual,
+    values, history, connectedAt, ecuStatus, motion, awaitingManual, connLog,
     liveTrip: () => session.snapshot(),
     session,
     isConnected: computed(() => status.value === 'connected'),

@@ -61,8 +61,10 @@ async function apply(): Promise<void> {
 const statusLine = computed(() => status.value === 'connected' ? (v.ecuSilent.value ? 'Адаптер на связи, ЭБУ молчит — включите зажигание' : `На связи${v.protocolName.value ? ' · ' + v.protocolName.value : ''}`) : status.value === 'connecting' ? v.note.value ?? 'Подключение…' : 'Нет связи с адаптером')
 const dot = computed(() => (status.value === 'connected' ? (v.ecuSilent.value ? 'bg-warn' : 'bg-ok') : status.value === 'connecting' ? 'bg-accent animate-pulse' : 'bg-faint'))
 const help = ref(false)
+const showLog = ref(false)
 const STEPS = [
   'Вставьте адаптер в разъём OBD-II (у ВАЗ — под рулём, у ручки капота или в бардачке) и включите зажигание, лучше заведите двигатель.',
+  'Приложение работает только с Bluetooth LE (4.0). Адаптер «классический» Bluetooth (спаривается по PIN 1234/0000 в настройках телефона) не подойдёт — нужен BLE-адаптер или Wi-Fi.',
   'Bluetooth: не соединяйте адаптер в системных настройках Bluetooth — приложение ищет его само. Выберите его кнопкой «Найти адаптер».',
   'Wi-Fi: подключите телефон к сети адаптера (обычно «WiFi_OBDII» или «OBDII»), отключив мобильный интернет, и проверьте IP 192.168.0.10, порт 35000.',
   'Если соединение рвётся, увеличьте тайм-аут ответа до 8000 мс и число попыток подключения.',
@@ -94,6 +96,11 @@ const STEPS = [
       <AppIcon name="book" :size="40" class="shrink-0 text-accent" />
     </button>
     <ol v-if="help" class="card list-decimal space-y-2 py-4 pl-9 pr-4 text-sm leading-relaxed text-soft"><li v-for="s in STEPS" :key="s">{{ s }}</li></ol>
+
+    <button class="flex w-full items-center gap-3 rounded-2xl card p-4 text-left" :aria-expanded="showLog" @click="showLog = !showLog">
+      <span class="min-w-0 flex-1"><span class="block text-sm font-medium">Журнал подключения</span><span class="block text-xs text-mute">Этапы и ошибки — покажите, если не подключается</span></span>
+    </button>
+    <pre v-if="showLog" class="card max-h-64 overflow-auto whitespace-pre-wrap p-3 text-[11px] leading-relaxed text-soft">{{ v.connLog.value.length ? v.connLog.value.join('\n') : 'Пока пусто — нажмите «Подключить».' }}</pre>
 
     <div class="card overflow-hidden">
       <button class="row" @click="pick = 'mode'"><span class="row-title">Тип соединения</span><span class="row-val">{{ modeLabel }}</span></button>
