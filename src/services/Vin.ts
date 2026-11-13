@@ -66,7 +66,7 @@ const MAKERS: [string, string][] = [
   ['X7L', 'Renault Россия'], ['X7M', 'Hyundai (ТагАЗ)'], ['X9F', 'Ford (Россия)'], ['X9L', 'GM-АвтоВАЗ (Chevrolet Niva)'], ['XLB', 'Volvo (Нидерланды)'],
   ['Z8N', 'Nissan (Россия)'], ['Z94', 'Hyundai (Россия)'], ['Z8T', 'Peugeot-Citroen (Россия)'], ['Z7C', 'Isuzu/ГАЗ'],
   ['Y6D', 'ЗАЗ (Украина)'], ['Y6J', 'ЗАЗ/Богдан'], ['Y39', 'МАЗ'], ['Y3M', 'МАЗ'],
-  ['WVW', 'Volkswagen'], ['WVG', 'Volkswagen SUV'], ['WAU', 'Audi'], ['WBA', 'BMW'], ['WBS', 'BMW M'], ['WDB', 'Mercedes-Benz'], ['WDD', 'Mercedes-Benz'], ['WF0', 'Ford (Германия)'], ['W0L', 'Opel'], ['WP0', 'Porsche'],
+  ['WVW', 'Volkswagen'], ['WVG', 'Volkswagen SUV'], ['WAU', 'Audi'], ['WBA', 'BMW'], ['X4X', 'BMW (Автотор, Калининград)'], ['WBS', 'BMW M'], ['WDB', 'Mercedes-Benz'], ['WDD', 'Mercedes-Benz'], ['WF0', 'Ford (Германия)'], ['W0L', 'Opel'], ['WP0', 'Porsche'],
   ['VF1', 'Renault'], ['VF3', 'Peugeot'], ['VF7', 'Citroën'], ['SAL', 'Land Rover'], ['SAJ', 'Jaguar'],
   ['TMB', 'Škoda'], ['TRU', 'Audi (Венгрия)'], ['ZFA', 'Fiat'], ['ZAR', 'Alfa Romeo'],
   ['JTD', 'Toyota'], ['JTE', 'Toyota'], ['JHM', 'Honda'], ['JN1', 'Nissan'], ['JMZ', 'Mazda'], ['JS3', 'Suzuki'], ['JF1', 'Subaru'], ['JMB', 'Mitsubishi'],

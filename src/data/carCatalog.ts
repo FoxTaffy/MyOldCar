@@ -20,7 +20,7 @@ export const CATALOG: Record<string, string[]> = {
   Toyota: ['Corolla', 'Camry', 'RAV4', 'Land Cruiser', 'Yaris'],
   Volkswagen: ['Golf', 'Polo', 'Passat', 'Jetta', 'Tiguan'],
   Audi: ['A4', 'A6', '80', '100'],
-  BMW: ['3 Series', '5 Series', 'X5', 'E34', 'E39'],
+  BMW: ['E90', '3 Series', '5 Series', 'X5', 'E34', 'E39', 'E46', 'E60', 'X3'],
   'Mercedes-Benz': ['C-Class', 'E-Class', 'W124', 'Sprinter'],
   Peugeot: ['206', '307', '408', '3008'],
   Citroen: ['C4', 'Berlingo', 'C3'],
