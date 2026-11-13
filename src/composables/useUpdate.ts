@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { Capacitor } from '@capacitor/core'
-import { APP_VERSION, checkForUpdate, type UpdateInfo } from '@/services/Updater'
+import { APP_VERSION, REPO, checkForUpdate, type UpdateInfo } from '@/services/Updater'
 
 const update = ref<UpdateInfo | null>(null)
 const checking = ref(false)
@@ -28,7 +28,9 @@ async function install(): Promise<void> {
   if (!u) return
   if (Capacitor.isNativePlatform()) {
     const { Browser } = await import('@capacitor/browser')
-    await Browser.open({ url: u.apkUrl })
+    // iOS не ставит .apk: открываем страницу релиза, откуда берётся .ipa для AltStore/Sideloadly.
+    const url = Capacitor.getPlatform() === 'ios' ? `https://github.com/${REPO}/releases/latest` : u.apkUrl
+    await Browser.open({ url })
   } else {
     window.open(u.apkUrl, '_blank')
   }
