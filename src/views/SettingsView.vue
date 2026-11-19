@@ -16,6 +16,7 @@ const { garage, clearTrips } = useGarage()
 const { settings } = useVehicle()
 const up = useUpdate()
 const THEMES: { id: ThemeMode; label: string; icon: string }[] = [{ id: 'light', label: 'Светлая', icon: 'sun' }, { id: 'dark', label: 'Тёмная', icon: 'moon' }, { id: 'auto', label: 'Как в системе', icon: 'gear' }]
+const TIRES: { id: 'auto' | 'summer' | 'winter' | 'all'; label: string }[] = [{ id: 'auto', label: 'Не знаю' }, { id: 'summer', label: 'Летняя' }, { id: 'winter', label: 'Зимняя' }, { id: 'all', label: 'Всесезон' }]
 const pick = ref<'limit' | 'warn' | null>(null)
 const LIMITS = [90, 100, 110, 120, 130, 140].map((n) => ({ id: String(n), label: `${n} км/ч` }))
 const WARNS = [70, 80, 90].map((n) => ({ id: String(n), label: `${n} % интервала` }))
@@ -96,6 +97,19 @@ function wipeTrips(): void { if (confirm('Удалить все поездки? 
       <button class="row" @click="pick = 'limit'"><span class="min-w-0"><span class="row-title">Порог превышения скорости</span><span class="row-sub">Для оценки стиля вождения; считается для новых поездок</span></span><span class="row-val">{{ ui.speedLimit }} км/ч</span></button>
       <button class="row" @click="pick = 'warn'"><span class="min-w-0"><span class="row-title">Напоминать об обслуживании</span><span class="row-sub">Когда выработано не меньше этой доли интервала</span></span><span class="row-val">{{ ui.warnPct }} %</span></button>
       <label class="row"><span class="row-title">Цена топлива, {{ ui.currency }}/л</span><input v-model.number="garage.fuelPrice" type="number" min="0" step="0.5" inputmode="decimal" class="w-24 bg-transparent text-right text-sm font-medium text-accent outline-none"></label>
+    </div>
+
+    <h2 class="h-section">Погода и дорога</h2>
+    <div class="card overflow-hidden">
+      <ToggleRow v-model="ui.weatherCard" title="Карточка погоды на главной" sub="Сегодня, завтра и советы: гололёд, дождь, ветер, смена резины" />
+      <div class="px-4 py-3">
+        <div class="row-title mb-2">Какая резина стоит</div>
+        <div class="grid grid-cols-4 gap-2">
+          <button v-for="t in TIRES" :key="t.id" class="rounded-xl border py-2 text-xs font-medium transition" :class="ui.tires === t.id ? 'border-accent bg-accent-soft text-accent' : 'border-night-600 text-mute'" :aria-pressed="ui.tires === t.id" @click="ui.tires = t.id">{{ t.label }}</button>
+        </div>
+        <p class="mt-2 text-xs text-faint">Нужна, чтобы напоминать о переобувании только когда это актуально.</p>
+      </div>
+      <label class="row"><span class="min-w-0"><span class="row-title">Ключ API Яндекс.Погоды</span><span class="row-sub">Необязательно. Без ключа прогноз берётся из Open-Meteo. Ключ выдаёт кабинет разработчика Яндекса (платный тариф).</span></span><input v-model.trim="ui.yandexKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="не задан" class="w-28 bg-transparent text-right text-sm font-medium text-accent outline-none placeholder:text-faint" /></label>
     </div>
 
     <h2 class="h-section">Подключение</h2>
