@@ -167,7 +167,11 @@ export class TripSession {
     if (gps) this.sources.add('gps')
 
     const maf = obd?.mafGs ?? null
-    const km = this.rec.feed(now, speed, maf, this.values, gapKm)
+    // Показания датчиков берём, только пока OBD свежий. Когда приложение свёрнуто и опрос остановился, в `this.values`
+    // лежат устаревшие данные: если их подставлять на каждую точку GPS, график «замирает» на последнем значении (чаще 0).
+    // Тогда в статистику идёт только скорость по GPS, остальные датчики на графике — разрыв.
+    const values = obd ? this.values : speed != null ? { speed } : undefined
+    const km = this.rec.feed(now, speed, maf, values, gapKm)
     this.recordPoint(now, obd, gps, speed)
     return km
   }
