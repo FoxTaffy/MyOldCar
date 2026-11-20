@@ -9,7 +9,7 @@ const W = 600
 const H = 180
 const L = 34
 const B = 18
-const FILL: Record<Level, string> = { ok: '#5fae7a', warn: '#d6a23f', bad: '#d9594c' }
+const FILL: Record<Level, string> = { ok: 'rgb(var(--ok))', warn: 'rgb(var(--warn))', bad: 'rgb(var(--bad))' }
 
 const ids = computed(() => Object.keys(props.series.data).filter((id) => props.series.data[id].some((v) => v != null && Number.isFinite(v))))
 const sel = ref('')
