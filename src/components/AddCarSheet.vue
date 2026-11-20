@@ -44,7 +44,7 @@ const size = computed(() => (cc.value < 1000 ? 'Маленький' : cc.value <
 <template>
   <Sheet full @close="back">
     <template #right><span class="flex gap-1.5 pr-3"><span v-for="n in 4" :key="n" class="h-2 w-2 rounded-full" :class="n - 1 <= step ? 'bg-accent' : 'bg-night-600'" /></span></template>
-    <h2 class="mb-3 mt-1 text-2xl font-black leading-tight">{{ TITLES[step].replace(/(производителя|модель|тип топлива|объём двигателя)$/, '') }}<span class="text-accent">{{ TITLES[step].match(/(производителя|модель|тип топлива|объём двигателя)$/)?.[0] }}</span></h2>
+    <h2 class="mb-3 mt-1 text-2xl font-semibold leading-tight">{{ TITLES[step].replace(/(производителя|модель|тип топлива|объём двигателя)$/, '') }}<span class="text-accent">{{ TITLES[step].match(/(производителя|модель|тип топлива|объём двигателя)$/)?.[0] }}</span></h2>
 
     <template v-if="step < 2">
       <input v-model="q" class="field mb-3" :placeholder="step === 0 ? 'Поиск производителя' : 'Поиск или ввод модели'" aria-label="Поиск">
@@ -69,7 +69,7 @@ const size = computed(() => (cc.value < 1000 ? 'Маленький' : cc.value <
 
     <template v-else>
       <div class="card p-4">
-        <div class="flex items-baseline justify-between"><span class="text-4xl font-black text-accent tabular-nums">{{ cc }}<span class="text-xl">cc</span></span><span class="text-sm text-mute">= {{ num(cc / 1000, 1) }} л</span></div>
+        <div class="flex items-baseline justify-between"><span class="text-4xl font-semibold text-accent tabular-nums">{{ cc }}<span class="text-xl">cc</span></span><span class="text-sm text-mute">= {{ num(cc / 1000, 1) }} л</span></div>
         <input v-model.number="cc" type="range" min="400" max="5200" step="100" class="mt-4 w-full" aria-label="Объём двигателя">
         <div class="flex justify-between text-xs text-faint"><span>400cc</span><span>5200cc</span></div>
       </div>

@@ -59,7 +59,7 @@ async function apply(): Promise<void> {
   before.value = linkKey()
 }
 const statusLine = computed(() => status.value === 'connected' ? (v.ecuSilent.value ? 'Адаптер на связи, ЭБУ молчит — включите зажигание' : `На связи${v.protocolName.value ? ' · ' + v.protocolName.value : ''}`) : status.value === 'connecting' ? v.note.value ?? 'Подключение…' : 'Нет связи с адаптером')
-const dot = computed(() => (status.value === 'connected' ? (v.ecuSilent.value ? 'bg-warn' : 'bg-ok') : status.value === 'connecting' ? 'bg-accent animate-pulse' : 'bg-faint'))
+const dot = computed(() => (status.value === 'connected' ? (v.ecuSilent.value ? 'bg-warn' : 'bg-ok') : status.value === 'connecting' ? 'bg-accent' : 'bg-faint'))
 const help = ref(false)
 const showLog = ref(false)
 const STEPS = [

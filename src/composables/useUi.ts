@@ -84,7 +84,7 @@ export function applyTheme(): void {
   root.dataset.theme = dark ? 'dark' : 'light'
   root.style.setProperty('--font-scale', String(1 + ui.fontStep * 0.08))
   root.classList.toggle('no-anim', !ui.animations)
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0b0b15' : '#f3f1fc')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#111519' : '#e2e5e8')
 }
 watch(() => [ui.theme, ui.fontStep, ui.animations], applyTheme, { immediate: true })
 mq?.addEventListener?.('change', applyTheme)

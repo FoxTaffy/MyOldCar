@@ -13,7 +13,7 @@ const color = computed(() => ({ ok: 'rgb(var(--accent))', warn: 'rgb(var(--warn)
 
 <template>
   <svg viewBox="0 0 100 100" :width="size ?? 84" :height="size ?? 84" aria-hidden="true">
-    <g transform="rotate(135 50 50)" fill="none" stroke-linecap="round" stroke-width="9">
+    <g transform="rotate(135 50 50)" fill="none" stroke-width="8">
       <circle cx="50" cy="50" :r="R" stroke="rgb(var(--raised))" :stroke-dasharray="`${ARC} ${C}`" />
       <circle v-if="frac > 0.004" cx="50" cy="50" :r="R" :stroke="color" :stroke-dasharray="`${ARC * frac} ${C}`" style="transition: stroke-dasharray 0.4s ease" />
     </g>

@@ -37,13 +37,13 @@ async function share(): Promise<void> {
 <template>
   <Teleport to="body">
     <Transition name="fade">
-      <div v-if="drawerOpen" class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" @click="drawerOpen = false" />
+      <div v-if="drawerOpen" class="fixed inset-0 z-40 bg-black/50" @click="drawerOpen = false" />
     </Transition>
     <Transition name="slide">
-      <aside v-if="drawerOpen" class="fixed inset-y-0 left-0 z-50 flex w-[82%] max-w-xs flex-col bg-night-800 shadow-2xl" style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom)" aria-label="Меню">
-        <button class="bg-gradient-to-br from-accent-soft to-night-800 px-5 pb-5 pt-6 text-left" @click="go('/garage')">
+      <aside v-if="drawerOpen" class="fixed inset-y-0 left-0 z-50 flex w-[82%] max-w-xs flex-col bg-night-800 border-r border-night-600" style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom)" aria-label="Меню">
+        <button class="border-b border-night-600 px-5 pb-5 pt-6 text-left" @click="go('/garage')">
           <BrandLogo :make="car().make || car().name" :size="64" />
-          <span class="mt-3 block truncate text-lg font-bold text-ink">{{ carTitle(car()) }}</span>
+          <span class="mt-3 block truncate text-lg font-semibold text-ink">{{ carTitle(car()) }}</span>
           <span class="block text-sm text-mute">{{ odo != null ? `${int(odo)} км · ` : '' }}{{ car().year ?? 'год не указан' }}</span>
         </button>
         <nav class="min-h-0 flex-1 overflow-y-auto py-2">

@@ -29,7 +29,7 @@ const upcoming = computed(() => weather.value.filter((d) => d.date >= new Date()
     <div class="rounded-2xl border p-4" :class="tone.box">
       <div class="flex items-center gap-3">
         <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-night-800" :class="tone.text"><AppIcon name="shower" :size="30" /></span>
-        <div class="min-w-0"><div class="text-xl font-black leading-tight" :class="tone.text">{{ advice.title }}</div><div class="text-xs text-mute">Загрязнённость {{ advice.dirt }} из 100</div></div>
+        <div class="min-w-0"><div class="text-xl font-semibold leading-tight" :class="tone.text">{{ advice.title }}</div><div class="text-xs text-mute">Загрязнённость {{ advice.dirt }} из 100</div></div>
       </div>
       <div class="mt-3 h-2.5 overflow-hidden rounded-full bg-night-700"><div class="h-full rounded-full transition-all duration-700" :class="tone.bar" :style="{ width: Math.max(4, advice.dirt) + '%' }" /></div>
       <ul class="mt-3 space-y-1.5 text-sm text-soft">
