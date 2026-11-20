@@ -12,7 +12,7 @@ const tone = computed(() => ({
   warn: { bar: 'bg-warn', text: 'text-warn', label: 'внимание' },
   bad: { bar: 'bg-bad', text: 'text-bad', label: 'вне нормы' },
 }[level.value]))
-const color = computed(() => ({ ok: '#5fae7a', warn: '#d6a23f', bad: '#d9594c' }[level.value]))
+const color = computed(() => ({ ok: 'rgb(var(--ok))', warn: 'rgb(var(--warn))', bad: 'rgb(var(--bad))' }[level.value]))
 const has = computed(() => props.value != null && !Number.isNaN(props.value))
 </script>
 

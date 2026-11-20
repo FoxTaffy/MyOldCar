@@ -24,7 +24,7 @@ onUnmounted(() => { void lock?.release() })
     </div>
     <div class="flex flex-1 flex-col items-center justify-center gap-6 px-4" :style="mirror ? 'transform: scaleY(-1)' : ''">
       <div class="text-center">
-        <div class="font-black leading-none tabular-nums transition-colors" :class="warn ? 'text-[#ff5a4d]' : 'text-[#3ed1ff]'" style="font-size: min(42vw, 38vh)">{{ speed ?? '—' }}</div>
+        <div class="font-semibold leading-none tabular-nums transition-colors" :class="warn ? 'text-[#ff5a4d]' : 'text-[#3ed1ff]'" style="font-size: min(42vw, 38vh)">{{ speed ?? '—' }}</div>
         <div class="mt-1 text-xl tracking-widest text-white/60">КМ/Ч</div>
       </div>
       <div class="grid w-full max-w-md grid-cols-3 gap-2 text-center">

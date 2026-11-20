@@ -169,8 +169,8 @@ void itemStatus
     <div class="rounded-2xl bg-night-700 px-4 py-3">
       <p class="text-sm text-soft">Нужен сервис или заправка?</p>
       <div class="mt-2 flex gap-2 overflow-x-auto">
-        <button class="chip" @click="search('автосервис')">⚙ Найти автосервисы</button>
-        <button class="chip" @click="search('АЗС')">⛽ Найти заправки</button>
+        <button class="chip" @click="search('автосервис')">Найти автосервисы</button>
+        <button class="chip" @click="search('АЗС')">Найти заправки</button>
         <button class="chip" @click="search('автомойка')">🚿 Найти мойки</button>
       </div>
     </div>

@@ -5,7 +5,7 @@ import type { Level } from '@/types'
 
 const props = defineProps<{ def: SensorDef; value: number | null | undefined }>()
 const STEPS = 60
-const FILL: Record<Level, string> = { ok: '#5fae7a', warn: '#d6a23f', bad: '#d9594c' }
+const FILL: Record<Level, string> = { ok: 'rgb(var(--ok))', warn: 'rgb(var(--warn))', bad: 'rgb(var(--bad))' }
 
 /** Зоны шкалы: семплируем levelOf по шкале и склеиваем соседние одинаковые куски. */
 const segs = computed(() => {

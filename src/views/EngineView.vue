@@ -47,7 +47,7 @@ const ecu = computed(() => v.ecuStatus.value)
     <PageHeader title="Диагностика двигателя" />
     <span class="inline-block rounded-full bg-accent px-4 py-1.5 text-xs font-semibold text-accent-on">{{ period }}</span>
 
-    <div class="card flex items-center justify-center bg-gradient-to-b from-accent-soft to-transparent py-5 text-accent"><AppIcon name="engine" :size="120" /></div>
+    <div class="card flex items-center justify-center py-5 text-accent"><AppIcon name="engine" :size="120" /></div>
 
     <div class="card p-3">
       <div class="grid grid-cols-4 gap-y-4">

@@ -12,7 +12,7 @@ const bg = computed(() => colors[[...props.make].reduce((a, c) => a + c.charCode
 </script>
 
 <template>
-  <span class="inline-flex shrink-0 items-center justify-center rounded-full bg-white shadow-card" :style="{ width: size + 'px', height: size + 'px', background: src ? undefined : bg }">
+  <span class="inline-flex shrink-0 items-center justify-center rounded-full bg-white border border-night-600" :style="{ width: size + 'px', height: size + 'px', background: src ? undefined : bg }">
     <img v-if="src" :src="src" :alt="make" class="object-contain" :style="{ width: size * 0.72 + 'px', height: size * 0.72 + 'px' }" loading="lazy" @error="failed = true">
     <span v-else class="font-bold text-white" :style="{ fontSize: size * 0.34 + 'px' }">{{ (make || '?').slice(0, 2).toUpperCase() }}</span>
   </span>

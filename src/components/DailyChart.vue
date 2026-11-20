@@ -31,12 +31,12 @@ const fmtKm = (v: number) => (v >= 10 ? Math.round(v).toString() : v.toFixed(1).
       <text :x="x(i)" :y="H - 8" text-anchor="middle" font-size="12" fill="rgb(var(--mute))">{{ d.label }}</text>
       <text :x="x(i)" :y="yKm(d.km) - 5" text-anchor="middle" font-size="12" fill="rgb(var(--soft))">{{ fmtKm(d.km) }}</text>
     </g>
-    <polyline v-if="dots.length > 1" :points="line" fill="none" stroke="#d6a23f" stroke-width="2" />
+    <polyline v-if="dots.length > 1" :points="line" fill="none" stroke="rgb(var(--warn))" stroke-width="2" />
     <g v-for="p in dots" :key="p.x">
-      <circle :cx="p.x" :cy="p.y" r="4" fill="#d6a23f" stroke="rgb(var(--card))" stroke-width="2" />
-      <text v-if="showValues" :x="p.x + 8" :y="p.y + 4" font-size="12" fill="#d6a23f">{{ p.v.toFixed(1).replace('.', ',') }}</text>
+      <circle :cx="p.x" :cy="p.y" r="4" fill="rgb(var(--warn))" stroke="rgb(var(--card))" stroke-width="2" />
+      <text v-if="showValues" :x="p.x + 8" :y="p.y + 4" font-size="12" fill="rgb(var(--warn))">{{ p.v.toFixed(1).replace('.', ',') }}</text>
     </g>
     <rect :x="PAD" y="6" width="10" height="10" fill="rgb(var(--accent))" /><text :x="PAD + 15" y="15" font-size="12" fill="rgb(var(--soft))">пробег, км</text>
-    <circle :cx="W - PAD - 92" cy="11" r="4" fill="#d6a23f" /><text :x="W - PAD" y="15" text-anchor="end" font-size="12" fill="rgb(var(--soft))">расход, л/100</text>
+    <circle :cx="W - PAD - 92" cy="11" r="4" fill="rgb(var(--warn))" /><text :x="W - PAD" y="15" text-anchor="end" font-size="12" fill="rgb(var(--soft))">расход, л/100</text>
   </svg>
 </template>

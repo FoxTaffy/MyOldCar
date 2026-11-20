@@ -69,7 +69,7 @@ const rows = computed(() => [
       </div>
       <div class="relative shrink-0">
         <RingGauge :value="score" :min="0" :max="100" :level="score == null ? 'ok' : score >= 75 ? 'ok' : score >= 55 ? 'warn' : 'bad'" :size="116" />
-        <span class="absolute inset-0 flex items-center justify-center text-4xl font-black tabular-nums">{{ score ?? '—' }}</span>
+        <span class="absolute inset-0 flex items-center justify-center text-4xl font-semibold tabular-nums">{{ score ?? '—' }}</span>
       </div>
     </div>
 
