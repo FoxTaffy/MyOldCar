@@ -3,7 +3,7 @@ import { allDtcs, describeDtc, searchDtcs } from '@/data/dtcDictionary'
 import { BUILTIN_SENSORS } from '@/data/sensors'
 import { parseVinResponse } from '@/services/ELMService'
 import { analyzeTrack, nearestPoint } from '@/services/TripAnalysis'
-import { IDLE_END_MS, TripSession, type GpsFix } from '@/services/TripSession'
+import { IDLE_END_MS, TripSession, isGpsSpeedOutlier, type GpsFix } from '@/services/TripSession'
 import { checkDigit, decodeVin, extractVin, modelYear } from '@/services/Vin'
 import type { SensorSnapshot } from '@/types'
 
@@ -61,6 +61,30 @@ describe('TripSession: автозапись и 30-минутный таймау�
     expect(s.trip!.distanceKm).toBe(0)
     s.feedGps(t, { t, lat: 56.75, lon: 37.62, speedKmh: null, accuracy: 20 }) // 111 км за 30 с
     expect(s.trip!.distanceKm).toBe(0)
+  })
+
+  it('одиночный выброс скорости GPS не попадает в максимум поездки и на график', () => {
+    const s = new TripSession()
+    let t = 0
+    for (let i = 0; i < 60; i++, t += 1000) {
+      // ~40 км/ч по смещению (0.0001° ≈ 11 м/с); на 30-й секунде GPS выдаёт 208 км/ч
+      s.feedGps(t, fix(t, i === 30 ? 208 : 40, 55.75 + i * 0.0001))
+    }
+    expect(s.trip!.maxSpeedKmh).toBeLessThan(60)
+    const series = s.snapshot()!.series
+    expect(Math.max(...series.data.speed.filter((v) => !Number.isNaN(v)))).toBeLessThan(60)
+  })
+
+  it('скорость выше 250 км/ч отбрасывается, даже если нет прошлой точки для сравнения', () => {
+    expect(isGpsSpeedOutlier(300, null, null)).toBe(true)
+    expect(isGpsSpeedOutlier(120, null, null)).toBe(false)
+  })
+
+  it('нормальный разгон и трасса — не выброс', () => {
+    expect(isGpsSpeedOutlier(60, { speedKmh: 40, dtMs: 1000 }, 50)).toBe(false) // +20 км/ч за секунду
+    expect(isGpsSpeedOutlier(130, { speedKmh: 125, dtMs: 1000 }, 128)).toBe(false)
+    expect(isGpsSpeedOutlier(208, { speedKmh: 40, dtMs: 1000 }, 40)).toBe(true) // +168 км/ч за секунду
+    expect(isGpsSpeedOutlier(120, { speedKmh: null, dtMs: 10_000 }, 30)).toBe(true) // смещение даёт 30, GPS — 120
   })
 
   it('опоздавшая точка GPS (старее уже учтённых данных) игнорируется', () => {
