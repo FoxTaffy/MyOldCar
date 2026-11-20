@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
+import WeatherCard from '@/components/WeatherCard.vue'
 import { useGarage } from '@/composables/useGarage'
 import { useMyTrips } from '@/composables/useMyTrips'
 import { useUi } from '@/composables/useUi'
@@ -109,6 +110,8 @@ const go = (to: string): void => { void router.push(to) }
       <AppIcon name="shower" class="shrink-0 text-accent" />
       <span class="min-w-0 text-sm"><b class="text-accent">{{ wash.advice.value.title }}.</b> <span class="text-soft">{{ wash.advice.value.reasons[wash.advice.value.reasons.length - 1] }}</span></span>
     </RouterLink>
+
+    <WeatherCard v-if="ui.weatherCard" />
 
     <!-- Плитки разделов -->
     <div class="grid grid-cols-3 gap-2.5">

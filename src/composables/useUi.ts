@@ -48,6 +48,12 @@ interface Ui {
   warnPct: number
   /** Пользователь закрыл подсказку на экране журнала. */
   hintJournal: boolean
+  /** Карточка «Погода и дорога» на главной. */
+  weatherCard: boolean
+  /** Ключ API Яндекс.Погоды (необязательно: без него данные берутся из Open-Meteo). */
+  yandexKey: string
+  /** Какая резина стоит — чтобы не напоминать о переобувании зря. */
+  tires: 'auto' | 'summer' | 'winter' | 'all'
 }
 
 function load(): Ui {
@@ -55,6 +61,7 @@ function load(): Ui {
     theme: 'dark', fontStep: 0, animations: true, currency: '₽', speedLimit: 110, graphFill: true, zoneColors: true,
     homeStats: ['avgKm', 'avgTime', 'lastDiag'], menuOrder: MENU.map((m) => m.id), menuHidden: [],
     monitor: ['speed', 'rpm', 'coolant', 'load', 'throttle', 'voltage'], warnPct: 80, hintJournal: false,
+    weatherCard: true, yandexKey: '', tires: 'auto',
   }
   try {
     const raw = localStorage.getItem(KEY)
