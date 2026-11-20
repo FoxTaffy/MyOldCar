@@ -20,6 +20,30 @@ const GPS_MAX_KMH = 250
 const GPS_MAX_ACCURACY_M = 60
 const MAX_POINTS = 1200
 
+/** Резче этого GPS-скорость меняться не может (разгон 0–100 за 3 с ≈ 33 км/ч за с), км/ч в секунду. */
+const GPS_MAX_ACCEL_KMH_PER_S = 35
+/** Скорость GPS, больше смещения за интервал более чем в 1.5 раза + этот запас, считаем выбросом, км/ч. */
+const GPS_DRIFT_MARGIN_KMH = 25
+/** Сравнивать скорость с соседней точкой и со смещением имеет смысл, только если точки близки по времени. */
+const GPS_COMPARE_MAX_MS = 15_000
+
+/**
+ * Скорость, которую GPS иногда «выдаёт» одной точкой (200+ км/ч при реальных 40): сверхпредел, нереальный разгон
+ * относительно прошлой точки или заметно больше, чем даёт смещение между точками.
+ */
+export function isGpsSpeedOutlier(
+  speedKmh: number,
+  prev: { speedKmh: number | null; dtMs: number } | null,
+  driftKmh: number | null,
+): boolean {
+  if (speedKmh > GPS_MAX_KMH) return true
+  if (prev && prev.dtMs > 0 && prev.dtMs <= GPS_COMPARE_MAX_MS) {
+    if (prev.speedKmh != null && (speedKmh - prev.speedKmh) / (prev.dtMs / 1000) > GPS_MAX_ACCEL_KMH_PER_S) return true
+    if (driftKmh != null && speedKmh > driftKmh * 1.5 + GPS_DRIFT_MARGIN_KMH) return true
+  }
+  return false
+}
+
 export interface GpsFix {
   t: number
   lat: number
@@ -97,6 +121,7 @@ export class TripSession {
     // Смещение с прошлой точки. В фоне и по сети точки приходят редко (раз в 10–60 с) и часто без скорости —
     // тогда скорость и пробег считаем по координатам, иначе такая поездка не записалась бы вовсе.
     let gapKm: number | null = null
+    let driftKmh: number | null = null
     const dt = prev ? now - prev.at : 0
     if (prev && dt <= MAX_GPS_GAP_MS) {
       const metres = haversineKm(prev.fix, fix) * 1000
@@ -105,9 +130,14 @@ export class TripSession {
       const kmh = metres < noise ? 0 : (metres / (dt / 1000)) * 3.6
       if (kmh <= GPS_MAX_KMH) {
         gapKm = kmh > 0 ? metres / 1000 : 0
-        if (fix.speedKmh == null) fix = { ...fix, speedKmh: kmh }
+        driftKmh = kmh
       }
     }
+    // Выброс скорости GPS (одиночный скачок до 200+ км/ч) заменяем скоростью по смещению, а если её нет — отбрасываем.
+    if (fix.speedKmh != null && isGpsSpeedOutlier(fix.speedKmh, prev ? { speedKmh: prev.fix.speedKmh, dtMs: dt } : null, driftKmh)) {
+      fix = { ...fix, speedKmh: null }
+    }
+    if (fix.speedKmh == null && driftKmh != null) fix = { ...fix, speedKmh: driftKmh }
     this.gps = { fix, at: now }
     if (now >= this.lastAt) return this.step(now, gapKm)
     // Точка опоздала: OBD уже прислал более свежие данные (обычное дело, когда приложение проснулось и дочитывает журнал GPS).
