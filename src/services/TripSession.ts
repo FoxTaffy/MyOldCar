@@ -12,6 +12,8 @@ export const IDLE_END_MS = 30 * 60_000
 /** Данные считаются «живыми», если свежее этого. */
 const OBD_FRESH_MS = 5000
 const GPS_FRESH_MS = 10_000
+/** Координата точки трека: в фоне фиксы редки (10–60 с), поэтому для маршрута берём последнюю точку и постарше. */
+const GPS_POS_FRESH_MS = 60_000
 /** Скорость GPS ниже порога считаем шумом (стоим). */
 const GPS_NOISE_KMH = 2
 /** Смещение быстрее этого между редкими точками — выброс GPS, а не езда. */
@@ -219,15 +221,20 @@ export class TripSession {
   private recordPoint(now: number, obd: SensorSnapshot | null, gps: GpsFix | null, speed: number | null): void {
     const mil = obd?.milOn === true
     const milEdge = mil !== this.prevMil
-    const moved = gps && this.lastPointPos ? haversineKm(this.lastPointPos, gps) * 1000 : 0
+    // Для маршрута годится и не самая свежая точка GPS; для скорости и движения остаётся строгая свежесть (gps).
+    const pos = gps ?? (this.gps && now - this.gps.at <= GPS_POS_FRESH_MS ? this.gps.fix : null)
+    const moved = pos && this.lastPointPos ? haversineKm(this.lastPointPos, pos) * 1000 : 0
     const interval = (speed ?? 0) >= 1 ? this.minIntervalMs : this.minIntervalMs * 4
-    if (!milEdge && this.points.length && now - this.lastPointAt < interval && moved < 25) return
+    // Пока в треке нет ни одной координаты, а она появилась, точку пишем без оглядки на интервал — иначе OBD «занимает» слот,
+    // и редкие фоновые фиксы GPS отбрасываются.
+    const needFirstPos = pos != null && this.lastPointPos == null
+    if (!milEdge && !needFirstPos && this.points.length && now - this.lastPointAt < interval && moved < 25) return
 
     const maf = obd?.mafGs ?? null
     const p: TrackPoint = {
       t: now,
-      lat: gps ? round(gps.lat, 6) : null,
-      lon: gps ? round(gps.lon, 6) : null,
+      lat: pos ? round(pos.lat, 6) : null,
+      lon: pos ? round(pos.lon, 6) : null,
       spd: speed != null ? round(speed, 1) : null,
       rpm: obd?.rpm != null ? Math.round(obd.rpm) : null,
       ect: obd?.coolantTempC ?? null,
@@ -240,7 +247,7 @@ export class TripSession {
     }
     this.points.push(p)
     this.lastPointAt = now
-    if (gps) this.lastPointPos = gps
+    if (pos) this.lastPointPos = pos
 
     if (mil && !this.prevMil) {
       const ev: TripEvent = { t: now, type: 'mil', lat: p.lat, lon: p.lon }
