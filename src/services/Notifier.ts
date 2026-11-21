@@ -38,6 +38,8 @@ const SMALL_ICON = 'ic_stat_car'
 export class Notifier {
   private timer: ReturnType<typeof setInterval> | null = null
   private running = false
+  /** Растёт при каждом stop(): start(), который не успел завершиться, видит это и сам гасит службу. */
+  private epoch = 0
   private getState: (() => NotifyState) | null = null
 
   private get supported(): boolean {
@@ -47,6 +49,7 @@ export class Notifier {
   async start(getState: () => NotifyState): Promise<void> {
     if (!this.supported || this.running) return
     this.getState = getState
+    const epoch = this.epoch
     try {
       const { ForegroundService, Importance } = await import('@capawesome-team/capacitor-android-foreground-service')
       // Android 13+: без разрешения уведомление не показывается (сервис при этом работает).
@@ -55,10 +58,16 @@ export class Notifier {
       await ForegroundService.createNotificationChannel({
         id: CHANNEL, name: 'Подключение к машине', description: 'Постоянное уведомление, пока приложение подключено к OBD-адаптеру', importance: Importance.Low,
       })
+      if (epoch !== this.epoch) return
       this.running = true
       await ForegroundService.startForegroundService({
         id: ID, title: 'MyOldCar · машина подключена', body: this.body(), smallIcon: SMALL_ICON, silent: true, notificationChannelId: CHANNEL,
       })
+      if (epoch !== this.epoch) {
+        this.running = false
+        await ForegroundService.stopForegroundService().catch(() => undefined)
+        return
+      }
       this.timer = setInterval(() => { void this.refresh() }, UPDATE_MS)
     } catch {
       this.running = false
@@ -79,6 +88,7 @@ export class Notifier {
   }
 
   async stop(): Promise<void> {
+    this.epoch++
     if (this.timer) clearInterval(this.timer)
     this.timer = null
     if (!this.running) return
