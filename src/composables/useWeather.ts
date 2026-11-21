@@ -42,12 +42,15 @@ export function useWeather() {
   const advice = computed(() => (data.value ? advise({ data: data.value, nowMs: tick.value, tires: ui.tires }) : null))
 
   async function refresh(force = false): Promise<void> {
-    if (loading.value) return
+    // Принудительное обновление (сменили ключ) не отбрасываем, а ждём текущую загрузку и повторяем.
+    if (loading.value) {
+      if (force) { while (loading.value) await new Promise((r) => setTimeout(r, 200)) } else return
+    }
     tick.value = Date.now()
     const cached = read<WxData>(WX_KEY)
     // Другой источник (добавили/убрали ключ) — кэш недействителен.
     const wantYandex = !!ui.yandexKey.trim()
-    const stale = !cached || Date.now() - cached.fetchedAt > TTL || (wantYandex && cached.source !== 'yandex')
+    const stale = !cached || Date.now() - cached.fetchedAt > TTL || (wantYandex && cached.source !== 'yandex') || (!wantYandex && cached.source === 'yandex')
     if (!force && !stale) { data.value = cached; return }
     let loc = (v.gpsFix.value ? { lat: v.gpsFix.value.lat, lon: v.gpsFix.value.lon } : null) ?? read<{ lat: number; lon: number }>(LOC_KEY)
     loading.value = true

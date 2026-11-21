@@ -285,7 +285,11 @@ gps.onFix = (fix) => {
   motion.value = session.motion
   refreshTripLive()
 }
-gps.onState = (st, msg) => { gpsState.value = st; gpsError.value = msg ?? null }
+gps.onState = (st, msg) => {
+  gpsState.value = st
+  gpsError.value = msg ?? null
+  logConn(`GPS: ${st}${msg ? ` — ${msg}` : ''}`)
+}
 /** Попросить права и включить фоновый GPS (кнопка на экране или после мастера). */
 function openGpsSettings(): Promise<void> { return gps.openSettings() }
 
@@ -484,6 +488,8 @@ function autoStart(): void {
     // Вернулись в приложение — пробуем сразу, не ждём таймер.
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) void idleCheck()
+      // Права могли выдать в системных настройках, а служба — упасть: без этого GPS молчал бы до перезапуска приложения.
+      if (!document.hidden && wantGps() && gps.state !== 'on' && gps.state !== 'starting') void gps.start()
       if (!document.hidden && status.value === 'disconnected' && !manualStop && prefs.autoConnect && prefs.onboarded && prefs.mode !== 'mock') {
         reconnectAttempts = 0
         clearReconnect()

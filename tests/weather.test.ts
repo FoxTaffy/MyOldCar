@@ -138,7 +138,7 @@ describe('источники данных', () => {
     })
     expect(r.data.source).toBe('open-meteo')
     expect(r.note).toMatch(/ключ/)
-    expect(seen).toHaveLength(2)
+    expect(seen).toHaveLength(3) // два заголовка Яндекса + Open-Meteo
   })
   it('без ключа Яндекс не трогаем, с ключом — шлём заголовок', async () => {
     const urls: string[] = []
@@ -146,7 +146,7 @@ describe('источники данных', () => {
     expect(urls.every((u) => u.includes('open-meteo'))).toBe(true)
     let hdr: Record<string, string> | undefined
     const r = await fetchWeather(55.7, 37.6, ' abc ', async (_u, h) => { hdr = h; return { status: 200, data: ya } })
-    expect(hdr).toEqual({ 'X-Yandex-Weather-Key': 'abc' })
+    expect(hdr).toEqual({ 'X-Yandex-API-Key': 'abc' })
     expect(r.data.source).toBe('yandex')
   })
 })

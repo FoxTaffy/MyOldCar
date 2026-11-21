@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import Segmented from '@/components/Segmented.vue'
 import { useGarage } from '@/composables/useGarage'
 import { useMyTrips } from '@/composables/useMyTrips'
+import { useUi } from '@/composables/useUi'
+import { createMap } from '@/services/map/createMap'
+import type { LatLon, MapAdapter } from '@/services/map/MapAdapter'
 import { inPeriod, type RoutePeriod } from '@/services/RouteSummary'
 import { dayKey, num, span } from '@/utils/format'
 
@@ -15,8 +16,10 @@ const { trips } = useMyTrips()
 const period = ref<RoutePeriod>('7')
 const periods = [{ id: '7', label: '7 дней' }, { id: '30', label: '30 дней' }, { id: 'all', label: 'Всё время' }]
 const mapEl = ref<HTMLDivElement | null>(null)
-let map: L.Map | null = null
-let layer: L.LayerGroup | null = null
+const { ui, isDark } = useUi()
+let map: MapAdapter | null = null
+let lastDot: { remove(): void } | null = null
+let unmounted = false
 
 const list = computed(() => inPeriod(trips.value, period.value).sort((a, b) => a.start - b.start))
 const withRoute = computed(() => list.value.map((t) => ({ t, route: loadRoute(t.id) })).filter((x) => x.route.length >= 2))
@@ -40,28 +43,29 @@ function color(i: number, n: number): string {
 
 function draw(): void {
   if (!map) return
-  layer?.remove()
-  layer = L.layerGroup().addTo(map)
-  const canvas = L.canvas({ padding: 0.3 })
-  const all: L.LatLngTuple[] = []
+  map.clearOverlays()
+  lastDot?.remove()
+  lastDot = null
+  const all: LatLon[] = []
   withRoute.value.forEach(({ route }, i, a) => {
-    L.polyline(route, { color: color(i, a.length), weight: i === a.length - 1 ? 5 : 3.5, opacity: i === a.length - 1 ? 0.95 : 0.55, renderer: canvas }).addTo(layer!)
+    map!.polyline(route, { color: color(i, a.length), weight: i === a.length - 1 ? 5 : 3.5, opacity: i === a.length - 1 ? 0.95 : 0.55 })
     all.push(...route)
   })
   const last = withRoute.value[withRoute.value.length - 1]
-  if (last) L.circleMarker(last.route[last.route.length - 1], { radius: 7, color: '#fff', weight: 2, fillColor: '#2fbf84', fillOpacity: 1 }).bindTooltip('Последняя поездка').addTo(layer)
-  if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [24, 24], maxZoom: 15 })
+  if (last) lastDot = map.dot(last.route[last.route.length - 1], { radius: 7, fill: '#2fbf84', ring: '#fff' }, 'Последняя поездка')
+  if (all.length) map.fitBounds(all, 24, 15)
 }
 
 onMounted(async () => {
   await nextTick()
   if (!mapEl.value) return
-  map = L.map(mapEl.value, { zoomControl: true }).setView([55.75, 37.62], 10)
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map)
+  const m = await createMap(mapEl.value, { center: [55.75, 37.62], zoom: 10, yandexKey: ui.yandexMapKey, dark: isDark() })
+  if (unmounted) { m.destroy(); return }
+  map = m
   draw()
 })
 watch(period, () => draw())
-onBeforeUnmount(() => { map?.remove(); map = null })
+onBeforeUnmount(() => { unmounted = true; lastDot?.remove(); map?.destroy(); map = null })
 </script>
 
 <template>

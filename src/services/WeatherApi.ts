@@ -229,7 +229,10 @@ export async function fetchWeather(lat: number, lon: number, yandexKey: string, 
   const key = yandexKey.trim()
   if (key) {
     try {
-      const r = await get(yandexUrl(lat, lon), { 'X-Yandex-Weather-Key': key })
+      // Ключ из кабинета разработчика (формат UUID) идёт в X-Yandex-API-Key — проверено живым запросом.
+      // Если его отвергли, пробуем заголовок X-Yandex-Weather-Key, которым пользуются ключи из других кабинетов.
+      let r = await get(yandexUrl(lat, lon), { 'X-Yandex-API-Key': key })
+      if (r.status === 401 || r.status === 403) r = await get(yandexUrl(lat, lon), { 'X-Yandex-Weather-Key': key })
       if (r.status === 401 || r.status === 403) throw new WeatherError('Яндекс.Погода не приняла ключ — показываю данные Open-Meteo')
       if (r.status === 429) throw new WeatherError('Лимит запросов Яндекс.Погоды исчерпан — показываю данные Open-Meteo')
       if (r.status < 200 || r.status >= 300) throw new WeatherError(`Яндекс.Погода: ошибка ${r.status} — показываю данные Open-Meteo`)

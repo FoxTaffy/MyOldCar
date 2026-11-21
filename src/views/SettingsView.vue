@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useWeather } from '@/composables/useWeather'
 import AppIcon from '@/components/AppIcon.vue'
 import ChoiceSheet from '@/components/ChoiceSheet.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -26,6 +27,25 @@ const toggles: { key: keyof AppSettings; label: string; hint: string }[] = [
   { key: 'recentIgnitionServicing', label: 'Недавно меняли свечи / провода / модуль', hint: 'Учитывается при пропусках зажигания' },
   { key: 'coldStartOnly', label: 'Неисправность проявляется только на холодном', hint: 'Влияет на оценку модуля зажигания' },
 ]
+// Ключ Яндекс.Погоды редактируется как черновик и применяется только по кнопке «Сохранить».
+const keyDraft = ref(ui.yandexKey)
+const keyDirty = computed(() => keyDraft.value.trim() !== ui.yandexKey)
+const saveKey = (): void => {
+  ui.yandexKey = keyDraft.value.replace(/\s+/g, '')
+  keyDraft.value = ui.yandexKey
+  void useWeather().refresh(true)
+  flash('Ключ сохранён')
+}
+const resetKey = (): void => { keyDraft.value = ui.yandexKey }
+// Ключ Яндекс.Карт: так же, черновик + «Сохранить» / «Сбросить».
+const mapDraft = ref(ui.yandexMapKey)
+const mapDirty = computed(() => mapDraft.value.trim() !== ui.yandexMapKey)
+const saveMapKey = (): void => {
+  ui.yandexMapKey = mapDraft.value.replace(/\s+/g, '')
+  mapDraft.value = ui.yandexMapKey
+  flash(ui.yandexMapKey ? 'Ключ карт сохранён — откройте карту заново' : 'Ключ карт удалён — будет OpenStreetMap')
+}
+const resetMapKey = (): void => { mapDraft.value = ui.yandexMapKey }
 const msg = ref<string | null>(null)
 const flash = (t: string): void => { msg.value = t; setTimeout(() => { if (msg.value === t) msg.value = null }, 3500) }
 
@@ -109,7 +129,20 @@ function wipeTrips(): void { if (confirm('Удалить все поездки? 
         </div>
         <p class="mt-2 text-xs text-faint">Нужна, чтобы напоминать о переобувании только когда это актуально.</p>
       </div>
-      <label class="row"><span class="min-w-0"><span class="row-title">Ключ API Яндекс.Погоды</span><span class="row-sub">Необязательно. Без ключа прогноз берётся из Open-Meteo. Ключ выдаёт кабинет разработчика Яндекса (платный тариф).</span></span><input v-model.trim="ui.yandexKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="не задан" class="w-28 bg-transparent text-right text-sm font-medium text-accent outline-none placeholder:text-faint" /></label>
+      <label class="row"><span class="min-w-0"><span class="row-title">Ключ API Яндекс.Погоды</span><span class="row-sub">Необязательно. Без ключа прогноз берётся из Open-Meteo. Ключ выдаёт кабинет разработчика Яндекса (платный тариф).</span></span><input v-model="keyDraft" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="не задан" class="w-28 bg-transparent text-right text-sm font-medium text-accent outline-none placeholder:text-faint" /></label>
+      <div v-if="keyDirty" class="flex gap-2 px-4 pb-3">
+        <button type="button" class="flex-1 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white" @click="saveKey">Сохранить</button>
+        <button type="button" class="flex-1 rounded-lg border border-line px-3 py-2 text-sm font-medium" @click="resetKey">Сбросить</button>
+      </div>
+    </div>
+
+    <h2 class="h-section">Карта</h2>
+    <div class="card overflow-hidden">
+      <label class="row"><span class="min-w-0"><span class="row-title">Ключ API Яндекс.Карт</span><span class="row-sub">Необязательно. С ключом карты поездок рисует Яндекс (JS API v3), без него или без интернета — OpenStreetMap. Ключ: кабинет разработчика Яндекса.</span></span><input v-model="mapDraft" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="не задан" class="w-28 bg-transparent text-right text-sm font-medium text-accent outline-none placeholder:text-faint" /></label>
+      <div v-if="mapDirty" class="flex gap-2 px-4 pb-3">
+        <button type="button" class="flex-1 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white" @click="saveMapKey">Сохранить</button>
+        <button type="button" class="flex-1 rounded-lg border border-line px-3 py-2 text-sm font-medium" @click="resetMapKey">Сбросить</button>
+      </div>
     </div>
 
     <h2 class="h-section">Подключение</h2>
