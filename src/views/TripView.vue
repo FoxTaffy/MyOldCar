@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import PageHeader from '@/components/PageHeader.vue'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useGarage } from '@/composables/useGarage'
+import { useUi } from '@/composables/useUi'
 import { useVehicle } from '@/composables/useVehicle'
+import { createMap } from '@/services/map/createMap'
+import type { MapAdapter } from '@/services/map/MapAdapter'
 import { placeName } from '@/services/Geocoder'
 import { analyzeTrack, nearestPoint, speedColor, type TrackPoint } from '@/services/TripAnalysis'
 import { tripAvgSpeed, tripConsumption, type Trip } from '@/services/TripRecorder'
@@ -14,6 +15,7 @@ import { dateTime, liters, num, span } from '@/utils/format'
 const route = useRoute()
 const { garage, loadTrack } = useGarage()
 const { session, tripActive } = useVehicle()
+const { ui, isDark } = useUi()
 
 const isLive = route.params.id === 'live'
 const points = ref<TrackPoint[]>([])
@@ -27,9 +29,9 @@ const sliderIdx = ref(0)
 /** Живая поездка: карта следует за машиной, пока пользователь сам её не сдвинул. */
 const follow = ref(isLive)
 
-let map: L.Map | null = null
-let layer: L.LayerGroup | null = null
-let cursor: L.CircleMarker | null = null
+let map: MapAdapter | null = null
+let cursor: { remove(): void } | null = null
+let unmounted = false
 let timer: ReturnType<typeof setInterval> | null = null
 let placeTimer: ReturnType<typeof setTimeout> | null = null
 let placeToken = 0
@@ -89,7 +91,7 @@ function pick(p: TrackPoint, pan = false): void {
   sliderIdx.value = Math.max(0, points.value.indexOf(p))
   if (map && p.lat != null && p.lon != null) {
     cursor?.remove()
-    cursor = L.circleMarker([p.lat, p.lon], { radius: 9, color: '#fff', weight: 3, fillColor: '#4a86c8', fillOpacity: 1 }).addTo(map)
+    cursor = map.dot([p.lat, p.lon], { radius: 9, fill: '#4a86c8', ring: '#fff' })
     if (pan) map.panTo([p.lat, p.lon])
   }
   loadPlace(p)
@@ -120,10 +122,8 @@ function loadPlace(p: TrackPoint): void {
 }
 
 function marker(p: { lat: number | null; lon: number | null }, html: string, size: number, onClick?: () => void): void {
-  if (!map || !layer || p.lat == null || p.lon == null) return
-  const m = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: '', html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] }), zIndexOffset: 500 })
-  if (onClick) m.on('click', onClick)
-  m.addTo(layer)
+  if (!map || p.lat == null || p.lon == null) return
+  map.marker([p.lat, p.lon], html, size, onClick)
 }
 
 const badge = (bg: string, text: string, border = '#ffffff'): string =>
@@ -132,29 +132,25 @@ const badge = (bg: string, text: string, border = '#ffffff'): string =>
 /** Всплывающее окно у точки; адрес дописывается, когда придёт (и только если окно всё ещё открыто на этой точке). */
 function openPopup(p: TrackPoint, title?: string): void {
   if (!map || p.lat == null || p.lon == null) return
-  const popup = L.popup({ maxWidth: 260 }).setLatLng([p.lat, p.lon]).setContent(popupHtml(p, title)).openOn(map)
+  const root = map.popup([p.lat, p.lon], popupHtml(p, title))
   placeName(p.lat, p.lon)
     .then((text) => `Место: ${text}`, () => 'адрес недоступен (нет интернета)')
-    .then((text) => { const el = popup.getElement()?.querySelector('.place'); if (el) el.textContent = text })
+    .then((text) => { const el = root?.querySelector('.place'); if (el) el.textContent = text })
 }
 
 function draw(): void {
   if (!map) return
-  layer?.remove()
-  layer = L.layerGroup().addTo(map)
+  map.clearOverlays()
   const r = analysis.value.route
   if (r.length < 2) return
-  const canvas = L.canvas({ padding: 0.3, tolerance: 8 })
   for (let i = 1; i < r.length; i++) {
     const a = r[i - 1]
     const b = r[i]
-    L.polyline([[a.lat as number, a.lon as number], [b.lat as number, b.lon as number]], { color: speedColor(b.spd), weight: 6, opacity: 0.95, renderer: canvas })
-      .on('click', (e: L.LeafletMouseEvent) => {
-        const p = nearestPoint(r, e.latlng.lat, e.latlng.lng) ?? b
-        pick(p)
-        openPopup(p)
-      })
-      .addTo(layer)
+    map.polyline([[a.lat as number, a.lon as number], [b.lat as number, b.lon as number]], { color: speedColor(b.spd), weight: 6, opacity: 0.95 }, ([lat, lon]) => {
+      const p = nearestPoint(r, lat, lon) ?? b
+      pick(p)
+      openPopup(p)
+    })
   }
   const first = r[0]
   const last = r[r.length - 1]
@@ -183,7 +179,7 @@ function draw(): void {
 function fit(): void {
   const r = analysis.value.route
   if (!map || r.length < 1) return
-  map.fitBounds(L.latLngBounds(r.map((p) => [p.lat as number, p.lon as number] as [number, number])), { padding: [24, 24], maxZoom: 17 })
+  map.fitBounds(r.map((p) => [p.lat as number, p.lon as number] as [number, number]), 24, 17)
 }
 
 function showAll(): void {
@@ -215,18 +211,22 @@ onMounted(async () => {
   refresh()
   await nextTick()
   if (!mapEl.value) return
-  map = L.map(mapEl.value, { zoomControl: true, attributionControl: true }).setView([55.75, 37.62], 11)
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map)
+  const m = await createMap(mapEl.value, { center: [55.75, 37.62], zoom: 11, yandexKey: ui.yandexMapKey, dark: isDark() })
+  // Страницу закрыли, пока грузилась карта (Яндекс подгружает скрипт).
+  if (unmounted) { m.destroy(); return }
+  map = m
   // Пользователь сам сдвинул карту — перестаём возвращать её к машине.
-  map.on('dragstart', () => { follow.value = false })
+  map.onUserMove(() => { follow.value = false })
   draw()
   if (isLive) timer = setInterval(() => { refresh(); draw() }, 3000)
 })
 onBeforeUnmount(() => {
+  unmounted = true
   if (timer) clearInterval(timer)
   if (placeTimer) clearTimeout(placeTimer)
   placeToken++
-  map?.remove()
+  cursor?.remove()
+  map?.destroy()
   map = null
 })
 

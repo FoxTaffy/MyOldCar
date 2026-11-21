@@ -37,6 +37,15 @@ const saveKey = (): void => {
   flash('Ключ сохранён')
 }
 const resetKey = (): void => { keyDraft.value = ui.yandexKey }
+// Ключ Яндекс.Карт: так же, черновик + «Сохранить» / «Сбросить».
+const mapDraft = ref(ui.yandexMapKey)
+const mapDirty = computed(() => mapDraft.value.trim() !== ui.yandexMapKey)
+const saveMapKey = (): void => {
+  ui.yandexMapKey = mapDraft.value.replace(/\s+/g, '')
+  mapDraft.value = ui.yandexMapKey
+  flash(ui.yandexMapKey ? 'Ключ карт сохранён — откройте карту заново' : 'Ключ карт удалён — будет OpenStreetMap')
+}
+const resetMapKey = (): void => { mapDraft.value = ui.yandexMapKey }
 const msg = ref<string | null>(null)
 const flash = (t: string): void => { msg.value = t; setTimeout(() => { if (msg.value === t) msg.value = null }, 3500) }
 
@@ -124,6 +133,15 @@ function wipeTrips(): void { if (confirm('Удалить все поездки? 
       <div v-if="keyDirty" class="flex gap-2 px-4 pb-3">
         <button type="button" class="flex-1 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white" @click="saveKey">Сохранить</button>
         <button type="button" class="flex-1 rounded-lg border border-line px-3 py-2 text-sm font-medium" @click="resetKey">Сбросить</button>
+      </div>
+    </div>
+
+    <h2 class="h-section">Карта</h2>
+    <div class="card overflow-hidden">
+      <label class="row"><span class="min-w-0"><span class="row-title">Ключ API Яндекс.Карт</span><span class="row-sub">Необязательно. С ключом карты поездок рисует Яндекс (JS API v3), без него или без интернета — OpenStreetMap. Ключ: кабинет разработчика Яндекса.</span></span><input v-model="mapDraft" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="не задан" class="w-28 bg-transparent text-right text-sm font-medium text-accent outline-none placeholder:text-faint" /></label>
+      <div v-if="mapDirty" class="flex gap-2 px-4 pb-3">
+        <button type="button" class="flex-1 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white" @click="saveMapKey">Сохранить</button>
+        <button type="button" class="flex-1 rounded-lg border border-line px-3 py-2 text-sm font-medium" @click="resetMapKey">Сбросить</button>
       </div>
     </div>
 
