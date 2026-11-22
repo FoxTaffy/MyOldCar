@@ -7,11 +7,35 @@ import { describeDtc, dtcAdvice, DTC_COUNT, findDtcs, isDtcCode } from '@/data/d
 import { carHint, knowledgeFor } from '@/data/carKnowledge'
 import { carTitle } from '@/services/Cars'
 import { isKnownCode } from '@/services/DiagnosticEngine'
+import { codeStats, type CodeTrend } from '@/services/DtcHistory'
+import { useUi } from '@/composables/useUi'
 import { dateTime, num } from '@/utils/format'
 
 const { settings, isConnected, milOn } = useVehicle()
 const { car } = useGarage()
-const { report, results, busy, error, scan } = useDiagnostics()
+const { ui } = useUi()
+const { report, results, busy, error, scan, clearing, clearedAt, clearCodes, history, codeTrends, gone, cleared, deleteHistory } = useDiagnostics()
+const TREND: Record<CodeTrend, { text: string; cls: string }> = {
+  new: { text: 'Новая', cls: 'border-bad text-bad' },
+  repeat: { text: 'Повтор', cls: 'border-line text-mute' },
+  returned: { text: 'Вернулась', cls: 'border-warn text-warn' },
+}
+const showHistory = ref(false)
+const frequent = computed(() => codeStats(history.value).filter((c) => c.times > 1).slice(0, 5))
+const fmtKm = (v: number | null): string => (v == null ? '' : `${num(v, 0)} км`)
+
+function askDeleteHistory(): void { if (confirm('Удалить историю чтений этой машины?')) deleteHistory() }
+async function askClear(): Promise<void> {
+  const n = results.value.length
+  const ok = confirm(
+    `Стереть ${n ? `${n} код(ов) ошибок` : 'память ошибок'} и погасить Check Engine?\n\n` +
+    '• Двигатель заглушён, зажигание включено.\n' +
+    '• Стоп-кадр и тесты готовности тоже сотрутся — машине понадобится 2–3 дня поездок, чтобы снова пройти тесты.\n' +
+    '• Сброс не чинит неисправность: если причина осталась, ошибка вернётся.\n\n' +
+    'Коды до сброса сохранятся в истории чтений.',
+  )
+  if (ok) await clearCodes()
+}
 const copied = ref(false)
 const copyErr = ref(false)
 
@@ -68,6 +92,8 @@ async function copy(): Promise<void> {
     results.value.length ? `Кодов: ${results.value.length} (подтверждённых ${confirmed.value}, временных ${pending.value})` : 'Ошибок нет',
     r.milOn != null ? `Check Engine: ${r.milOn ? 'горит' : 'не горит'}` : '',
     freezeRows.value.length ? 'Стоп-кадр: ' + freezeRows.value.map(([k, v]) => `${k} ${v}`).join('; ') : '',
+    r.readiness ? `Тесты готовности: ${r.readiness.text}` : '',
+    cleared.value?.text ?? '',
   ].filter(Boolean).join('\n')
   const body = cards.value
     .map((c) => `${c.code} (${c.status === 'pending' ? 'временная' : 'подтверждённая'}) — ${c.info.title}\n` + c.causes.map((x) => (c.modeled ? `  ${x.probability}% ${x.title}` : `  ${x.recommendation}`)).join('\n') + (c.carHint ? `\n  ${knowledge.value?.title}: ${c.carHint}` : ''))
@@ -128,7 +154,18 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
         <div v-if="report.protocol"><dt>Протокол</dt><dd class="!font-sans">{{ report.protocol }}</dd></div>
       </dl>
       <p v-if="!results.length" class="mt-2 text-sm muted">Память ЭБУ чиста: ни сохранённых, ни временных кодов.</p>
-      <p class="mt-2 text-xs text-faint">Приложение только читает коды и ничего не стирает в ЭБУ.</p>
+      <p v-if="gone.length" class="mt-2 text-sm text-ok">Пропали с прошлого чтения: <span class="font-mono">{{ gone.join(', ') }}</span></p>
+      <p v-if="clearedAt" class="mt-2 text-sm text-ok">Ошибки стёрты. Если неисправность осталась, код вернётся — прочитайте ещё раз после поездки.</p>
+      <button v-if="ui.allowDtcClear && (results.length || report.milOn)" class="btn-ghost mt-3 w-full !border-bad !text-bad" :disabled="!isConnected || clearing || busy" @click="askClear">{{ clearing ? 'Сброс…' : 'Стереть ошибки' }}</button>
+      <p v-if="!ui.allowDtcClear" class="mt-2 text-xs text-faint">Приложение только читает коды. Сброс ошибок можно включить в настройках.</p>
+    </div>
+
+    <div v-if="report?.readiness || cleared" class="card p-4">
+      <h2 class="label">Тесты готовности</h2>
+      <p v-if="report?.readiness" class="mt-1 text-sm font-semibold" :class="{ ok: 'text-ok', warn: 'text-warn', bad: 'text-bad' }[report.readiness.level]">{{ report.readiness.text }}</p>
+      <p v-if="report?.readiness?.incomplete.length" class="mt-1 text-xs muted">Не завершены: {{ report.readiness.incomplete.join(', ') }}</p>
+      <p v-if="cleared" class="mt-2 text-sm" :class="cleared.suspicious ? 'text-warn' : 'muted'">{{ cleared.text }}</p>
+      <p class="mt-2 text-xs text-faint">ЭБУ сам проверяет катализатор, лямбда-зонды, пропуски и другие системы. После сброса ошибок или отключения аккумулятора тесты обнуляются — по ним видно, стирали ли ошибки перед продажей.</p>
     </div>
 
     <div v-if="freezeRows.length" class="card p-4">
@@ -152,7 +189,10 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
       <header>
         <div class="flex items-baseline justify-between gap-2">
           <span class="font-mono text-2xl font-semibold" :class="r.status === 'pending' ? 'text-warn' : 'text-bad'">{{ r.code }}</span>
-          <span class="label" :class="r.status === 'pending' ? 'text-warn' : 'text-bad'">{{ r.status === 'pending' ? 'Временная' : 'Подтверждённая' }}</span>
+          <span class="flex items-center gap-2">
+            <span v-if="codeTrends[r.code] && history.length > 1" class="border px-1.5 text-[10px] font-semibold uppercase" :class="TREND[codeTrends[r.code]].cls">{{ TREND[codeTrends[r.code]].text }}</span>
+            <span class="label" :class="r.status === 'pending' ? 'text-warn' : 'text-bad'">{{ r.status === 'pending' ? 'Временная' : 'Подтверждённая' }}</span>
+          </span>
         </div>
         <div class="mt-1 text-sm text-ink">{{ r.info.title }}</div>
         <div class="mt-1 text-xs text-faint">{{ r.info.system }}<template v-if="r.info.subsystem"> · {{ r.info.subsystem }}</template> · {{ r.info.kind === 'generic' ? 'универсальный код' : 'заводской код' }}</div>
@@ -182,6 +222,31 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
         <ul class="mt-1 list-disc space-y-1 pl-5"><li v-for="n in r.notes" :key="n">{{ n }}</li></ul>
       </details>
     </article>
+
+    <div v-if="history.length" class="card p-4">
+      <button class="flex w-full items-baseline justify-between gap-2" @click="showHistory = !showHistory">
+        <h2 class="label">История чтений</h2>
+        <span class="font-mono text-[11px] muted">{{ history.length }} {{ showHistory ? '▴' : '▾' }}</span>
+      </button>
+      <template v-if="showHistory">
+        <div v-if="frequent.length" class="mt-2 text-xs">
+          <span class="muted">Чаще всего:</span>
+          <span v-for="f in frequent" :key="f.code" class="ml-2 font-mono">{{ f.code }}<span class="muted"> ×{{ f.times }}</span></span>
+        </div>
+        <ul class="mt-2 divide-y divide-night-600 text-sm">
+          <li v-for="h in history" :key="h.id" class="py-2">
+            <div class="flex justify-between gap-2 text-xs muted"><span>{{ dateTime(h.at) }}</span><span>{{ fmtKm(h.odometerKm) }}</span></div>
+            <div v-if="h.cleared" class="text-accent">Ошибки стёрты<template v-if="h.stored.length + h.pending.length">: <span class="font-mono">{{ [...h.stored, ...h.pending].join(', ') }}</span></template></div>
+            <div v-else-if="!h.stored.length && !h.pending.length" class="text-ok">Ошибок нет</div>
+            <div v-else class="font-mono">
+              <span v-for="c in h.stored" :key="c" class="mr-2 text-bad">{{ c }}</span>
+              <span v-for="c in h.pending" :key="'p' + c" class="mr-2 text-warn">{{ c }}</span>
+            </div>
+          </li>
+        </ul>
+        <button class="mt-2 text-xs text-bad" @click="askDeleteHistory">Удалить историю</button>
+      </template>
+    </div>
 
     <div class="card space-y-2 p-4">
       <div class="flex items-baseline justify-between gap-2">

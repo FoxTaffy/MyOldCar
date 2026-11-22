@@ -170,6 +170,11 @@ function wipeTrips(): void { if (confirm('Удалить все поездки? 
       <button class="row" @click="showWizard = true"><span class="row-title">Мастер первой настройки</span><AppIcon name="chevron" :size="18" class="text-faint" /></button>
     </div>
 
+    <h2 class="h-section">Диагностика</h2>
+    <div class="card overflow-hidden">
+      <ToggleRow v-model="ui.allowDtcClear" title="Разрешить сброс ошибок" sub="Кнопка «Стереть ошибки» на вкладке «Ошибки». Сброс гасит Check Engine, стирает стоп-кадр и тесты готовности, но не чинит неисправность. Остальные команды по-прежнему только читают." />
+    </div>
+
     <h2 class="h-section">Что недавно делали с машиной</h2>
     <p class="-mt-1 px-1 text-xs text-faint">Учитывается при оценке причин ошибок — пересчёт идёт сразу.</p>
     <div class="card overflow-hidden">
@@ -227,7 +232,7 @@ function wipeTrips(): void { if (confirm('Удалить все поездки? 
       <p v-else-if="up.upToDate.value" class="text-sm text-ok">Установлена последняя версия.</p>
       <p v-if="up.error.value" class="text-xs text-bad">Не удалось проверить: {{ up.error.value }}</p>
       <button class="btn-ghost w-full" :disabled="up.checking.value" @click="up.check()">{{ up.checking.value ? 'Проверка…' : 'Проверить обновления' }}</button>
-      <p class="text-xs text-faint">Приложение только читает данные: оно не пишет в ЭБУ и не сбрасывает ошибки.</p>
+      <p class="text-xs text-faint">{{ ui.allowDtcClear ? 'Приложение читает данные ЭБУ; единственная команда записи — сброс ошибок по вашему подтверждению.' : 'Приложение только читает данные: оно не пишет в ЭБУ и не сбрасывает ошибки.' }}</p>
     </div>
 
     <ChoiceSheet v-if="pick === 'limit'" title="Порог превышения скорости" :options="LIMITS" :model-value="String(ui.speedLimit)" @update:model-value="ui.speedLimit = Number($event)" @close="pick = null" />

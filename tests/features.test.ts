@@ -238,8 +238,10 @@ describe('Только чтение', () => {
     await expect(elm.send('2E F1 90 00')).rejects.toThrow(/заблокирована/)
     expect(written).toEqual([])
   })
-  it('в сервисе больше нет метода сброса ошибок', () => {
-    expect((ELMService.prototype as unknown as Record<string, unknown>).clearDtcs).toBeUndefined()
+  it('сброс ошибок — только отдельный метод clearDtcs (включается в настройках), других методов записи нет', () => {
+    const names = Object.getOwnPropertyNames(ELMService.prototype)
+    expect(names).toContain('clearDtcs')
+    expect(names.filter((n) => /^(clear|reset|write|erase)/i.test(n))).toEqual(['clearDtcs'])
   })
 })
 

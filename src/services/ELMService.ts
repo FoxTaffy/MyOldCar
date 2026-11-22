@@ -346,6 +346,8 @@ export interface MockOptions {
 export class MockTransport implements Transport {
   private cb: (chunk: string) => void = () => {}
   private t0 = Date.now()
+  /** Демо: ошибки стёрли (режим 04) — коды и лампа пропадают, тесты готовности не завершены. */
+  private cleared = false
   constructor(private readonly opts: MockOptions = { dtcs: ['P0171', 'P0301'], pending: ['P0123'], lowMaf: true }) {}
 
   async connect(): Promise<void> {
@@ -399,9 +401,17 @@ export class MockTransport implements Transport {
       case '0146': return `41 46 ${hex(12 + 40, 1)}`
       case '012F': return `41 2F ${hex(0.62 * 255, 1)}`
       case '0142': return `41 42 ${hex(14200 + Math.sin(Date.now() / 3000) * 150, 2)}`
+      case '0130': return `41 30 ${hex(this.cleared ? 0 : 3, 1)}`
+      case '0131': return `41 31 ${hex(this.cleared ? 0 : 45, 2)}`
+      case '014E': return `41 4E ${hex(this.cleared ? 0 : 95, 2)}`
+      case '04':
+        this.opts.dtcs = []
+        this.opts.pending = []
+        this.cleared = true
+        return '44'
       case '0101': { // лампа загорается через 20 с демо; младшие 7 бит — число сохранённых кодов
-        const on = Date.now() - this.t0 > 20000
-        return `41 01 ${hex(on ? 0x80 | this.opts.dtcs.length : 0, 1)} 07 E5 00`
+        const on = !this.cleared && Date.now() - this.t0 > 20000
+        return this.cleared ? '41 01 00 07 E5 E5' : `41 01 ${hex(on ? 0x80 | this.opts.dtcs.length : 0, 1)} 07 E5 00`
       }
       case '0902': return '014\n0: 49 02 01 58 54 41\n1: 32 31 30 34 30 30 59\n2: 31 32 33 34 35 36 37'
       case '03': return `43 ${this.opts.dtcs.length ? this.opts.dtcs.map(encodeDtc).join(' ') : '00 00 00 00 00 00'}`
@@ -626,6 +636,11 @@ export class ELMService {
     if (!isReadOnlyCommand(cmd)) {
       return Promise.reject(new ELMError(`Команда ${cmd} заблокирована: приложение работает только на чтение`))
     }
+    return this.exec(cmd, timeoutMs)
+  }
+
+  /** Отправка без проверки белого списка — только для clearDtcs(). */
+  private exec(cmd: string, timeoutMs: number): Promise<string> {
     const run = async (): Promise<string> => {
       if (this.closed) throw new ELMError('Связь с адаптером потеряна')
       if (this.dirty && cmd.trim() !== '') await this.resync()
@@ -829,6 +844,23 @@ export class ELMService {
   /** Режим 07 — временные (ожидающие подтверждения) коды. Не все ЭБУ поддерживают. */
   async readPendingDtcs(): Promise<string[]> {
     return this.dtcs(await this.send('07'), '47', 'временных кодов')
+  }
+
+  /**
+   * Режим 04 — сброс кодов ошибок и стоп-кадра, гасит Check Engine. ЕДИНСТВЕННАЯ команда, меняющая состояние ЭБУ.
+   * Вызывается только после явного подтверждения пользователя и только если сброс разрешён в настройках
+   * (проверка в интерфейсе); send() режим 04 по-прежнему не пропускает.
+   * Вместе с кодами стираются тесты готовности — после сброса машине нужно 2–3 дня поездок, чтобы их пройти.
+   */
+  async clearDtcs(): Promise<void> {
+    const r = (await this.exec('04', Math.max(this.cfg.timeoutMs, 10000))).replace(/\s/g, '').toUpperCase()
+    if (/^7F04/.test(r) || r.includes('7F04')) throw new ELMError('ЭБУ отказал в сбросе: заглушите двигатель, оставьте зажигание включённым и повторите')
+    if (!r.includes('44')) throw new ELMError(NO_ANSWER.test(r) ? 'ЭБУ не ответил на сброс — включено ли зажигание?' : `Неожиданный ответ на сброс: ${r}`)
+  }
+
+  /** Пробег, прогревы и время работы с момента последнего сброса ошибок (PID 30, 31, 4E). */
+  async readSinceClear(): Promise<{ warm: number[] | null; dist: number[] | null; time: number[] | null }> {
+    return { warm: await this.pid('30', true), dist: await this.pid('31', true), time: await this.pid('4E', true) }
   }
 
   /**
