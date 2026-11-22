@@ -7,7 +7,7 @@ import OnboardingWizard from '@/components/OnboardingWizard.vue'
 import WelcomeScreen from '@/components/WelcomeScreen.vue'
 import { useGarage } from '@/composables/useGarage'
 import { setBackLock } from '@/services/BackHandler'
-import { toast } from '@/composables/useToast'
+import { showToast, toast } from '@/composables/useToast'
 import { useUpdate } from '@/composables/useUpdate'
 import { drawerOpen, showWizard, useUi } from '@/composables/useUi'
 import { useVehicle } from '@/composables/useVehicle'
@@ -36,7 +36,13 @@ const tabs = [
 const bar = computed(() => (route.meta.bar as string | undefined) ?? 'none')
 /** Карта поездки — часть раздела «Поездки»: вкладка должна оставаться подсвеченной. */
 const activeTab = computed(() => (route.path.startsWith('/trip') ? '/stats' : route.path))
-onMounted(() => { v.autoStart(); void up.check() })
+onMounted(() => {
+  v.autoStart()
+  void up.check()
+  // main.ts восстановил данные из зеркала (localStorage был очищен системой).
+  const restored = sessionStorage.getItem('myoldcar-restored')
+  if (restored) { sessionStorage.removeItem('myoldcar-restored'); showToast('Данные восстановлены из резервной копии на телефоне', 5000) }
+})
 const viaText = { ble: 'Bluetooth', wifi: 'Wi-Fi', mock: 'Демо' } as const
 const pill = computed(() => {
   if (v.status.value === 'connecting') return { text: 'Подключение…', dot: 'bg-accent' }

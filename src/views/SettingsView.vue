@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { Capacitor } from '@capacitor/core'
 import { useWeather } from '@/composables/useWeather'
 import AppIcon from '@/components/AppIcon.vue'
 import ChoiceSheet from '@/components/ChoiceSheet.vue'
@@ -10,7 +11,10 @@ import { useUpdate } from '@/composables/useUpdate'
 import { showWizard, useUi, type ThemeMode } from '@/composables/useUi'
 import { useVehicle } from '@/composables/useVehicle'
 import type { AppSettings } from '@/types'
-import { todayISO } from '@/utils/format'
+import { applySnapshot, backupNow, flush, listBackups, makeSnapshot, parseSnapshot, readBackup, type BackupFile, type Snapshot } from '@/services/DurableStore'
+import { clearErrors, errorLog, errorReport } from '@/services/ErrorLog'
+import { saveTextFile } from '@/services/FileSave'
+import { dateTime, todayISO } from '@/utils/format'
 
 const { ui } = useUi()
 const { garage, clearTrips } = useGarage()
@@ -50,19 +54,17 @@ const msg = ref<string | null>(null)
 const flash = (t: string): void => { msg.value = t; setTimeout(() => { if (msg.value === t) msg.value = null }, 3500) }
 
 /** Резервная копия: всё, что приложение хранит на телефоне (машины, поездки, журнал, настройки). */
-function exportBackup(): void {
-  const data: Record<string, string> = {}
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i)
-    if (k?.startsWith('myoldcar.')) data[k] = localStorage.getItem(k) ?? ''
-  }
-  const blob = new Blob([JSON.stringify({ app: 'myoldcar', version: up.version, at: new Date().toISOString(), data })], { type: 'application/json' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `myoldcar-backup-${todayISO()}.json`
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 3000)
-  flash('Копия сохранена в «Загрузки»')
+async function exportBackup(): Promise<void> {
+  try {
+    const snap = makeSnapshot(localStorage, up.version)
+    if (await saveTextFile(`myoldcar-backup-${todayISO()}.json`, 'application/json', JSON.stringify(snap))) flash(isNative ? 'Копия готова — выберите, куда сохранить' : 'Копия сохранена в «Загрузки»')
+  } catch (e) { flash(e instanceof Error ? e.message : 'Не удалось сохранить копию') }
+}
+function restoreSnapshot(snap: Snapshot): void {
+  if (!confirm(`Заменить данные на телефоне данными из копии${snap.at ? ' от ' + dateTime(Date.parse(snap.at)) : ''} (${Object.keys(snap.data).length} записей)? Текущие будут перезаписаны.`)) return
+  applySnapshot(localStorage, snap)
+  flash('Данные восстановлены, перезапускаю…')
+  setTimeout(() => location.reload(), 900)
 }
 function importBackup(e: Event): void {
   const f = (e.target as HTMLInputElement).files?.[0]
@@ -70,18 +72,34 @@ function importBackup(e: Event): void {
   if (!f) return
   const rd = new FileReader()
   rd.onload = () => {
-    try {
-      const j = JSON.parse(String(rd.result)) as { app?: string; data?: Record<string, unknown> }
-      if (j.app !== 'myoldcar' || !j.data || typeof j.data !== 'object') throw new Error('Это не копия MyOldCar')
-      const entries = Object.entries(j.data).filter(([k, v]) => k.startsWith('myoldcar.') && typeof v === 'string')
-      if (!entries.length) throw new Error('В копии нет данных')
-      if (!confirm(`Заменить данные на телефоне данными из копии (${entries.length} записей)? Текущие будут перезаписаны.`)) return
-      for (const [k, v] of entries) localStorage.setItem(k, v as string)
-      flash('Данные восстановлены, перезапускаю…')
-      setTimeout(() => location.reload(), 900)
-    } catch (err) { flash(err instanceof Error ? err.message : 'Не удалось прочитать файл') }
+    try { restoreSnapshot(parseSnapshot(String(rd.result))) } catch (err) { flash(err instanceof Error ? err.message : 'Не удалось прочитать файл') }
   }
   rd.readAsText(f)
+}
+
+/* Автокопии (только на телефоне): раз в неделю, хранятся 4 последние. */
+const isNative = Capacitor.isNativePlatform()
+const autoBackups = ref<BackupFile[]>([])
+const refreshBackups = async (): Promise<void> => { autoBackups.value = await listBackups() }
+onMounted(() => { void refreshBackups() })
+async function makeBackupNow(): Promise<void> {
+  try { await flush(up.version); const n = await backupNow(up.version); await refreshBackups(); if (n) flash('Копия сделана') } catch (e) { flash(e instanceof Error ? e.message : 'Не удалось сделать копию') }
+}
+async function restoreAuto(name: string): Promise<void> {
+  try { restoreSnapshot(await readBackup(name)) } catch (e) { flash(e instanceof Error ? e.message : 'Не удалось прочитать копию') }
+}
+async function shareAuto(name: string): Promise<void> {
+  try { await saveTextFile(name, 'application/json', JSON.stringify(await readBackup(name))) } catch (e) { flash(e instanceof Error ? e.message : 'Не удалось отправить копию') }
+}
+const kb = (n: number): string => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} МБ` : `${Math.max(1, Math.round(n / 1024))} КБ`)
+
+/* Журнал ошибок */
+const showErrors = ref(false)
+async function copyErrors(): Promise<void> {
+  try { await navigator.clipboard.writeText(errorReport(errorLog.value, up.version)); flash('Журнал скопирован — отправьте его разработчику') } catch { flash('Не удалось скопировать') }
+}
+async function shareErrors(): Promise<void> {
+  try { await saveTextFile(`myoldcar-errors-${todayISO()}.txt`, 'text/plain', errorReport(errorLog.value, up.version)) } catch (e) { flash(e instanceof Error ? e.message : 'Не удалось отправить') }
 }
 function wipeTrips(): void { if (confirm('Удалить все поездки? Расходы, машины и масло сохранятся.')) { clearTrips(); flash('Поездки удалены') } }
 </script>
@@ -162,8 +180,39 @@ function wipeTrips(): void { if (confirm('Удалить все поездки? 
     <div class="card overflow-hidden">
       <button class="row" @click="exportBackup"><span class="min-w-0"><span class="row-title">Сохранить резервную копию</span><span class="row-sub">Машины, поездки, журнал и настройки одним файлом</span></span><AppIcon name="download" :size="20" class="text-accent" /></button>
       <label class="row cursor-pointer"><span class="min-w-0"><span class="row-title">Восстановить из копии</span><span class="row-sub">Например, при переезде на новый телефон</span></span><AppIcon name="refresh" :size="20" class="text-accent" /><input type="file" accept=".json,application/json" class="hidden" @change="importBackup"></label>
+      <template v-if="isNative">
+        <button class="row" @click="makeBackupNow"><span class="min-w-0"><span class="row-title">Автокопии на телефоне</span><span class="row-sub">Делаются раз в неделю, хранятся 4 последние. Если система очистит данные приложения, они вернутся сами при запуске.</span></span><span class="row-val">Сделать</span></button>
+        <div v-for="b in autoBackups" :key="b.name" class="row">
+          <span class="min-w-0"><span class="row-title font-mono text-sm">{{ b.name.replace('myoldcar-', '').replace('.json', '') }}</span><span class="row-sub">{{ kb(b.size) }}</span></span>
+          <span class="flex gap-3">
+            <button class="text-sm font-medium text-accent" @click="shareAuto(b.name)">Отправить</button>
+            <button class="text-sm font-medium text-accent" @click="restoreAuto(b.name)">Вернуть</button>
+          </span>
+        </div>
+      </template>
       <button class="row" @click="wipeTrips"><span class="row-title !text-bad">Удалить все поездки</span><AppIcon name="trash" :size="20" class="text-bad" /></button>
     </div>
+    <h2 class="h-section">Журнал ошибок</h2>
+    <div class="card overflow-hidden">
+      <button class="row" @click="showErrors = !showErrors">
+        <span class="min-w-0"><span class="row-title">Ошибки приложения</span><span class="row-sub">Сбои интерфейса и фоновых задач. Хранятся только на телефоне.</span></span>
+        <span class="row-val" :class="errorLog.length ? 'text-warn' : ''">{{ errorLog.length || 'нет' }}</span>
+      </button>
+      <template v-if="showErrors && errorLog.length">
+        <ul class="max-h-80 divide-y divide-night-600 overflow-auto px-4 text-xs">
+          <li v-for="(e, i) in errorLog.slice().reverse()" :key="i" class="py-2">
+            <div class="flex justify-between gap-2 text-faint"><span>{{ dateTime(e.at) }} · {{ e.source }}<template v-if="e.route"> · {{ e.route }}</template></span><span v-if="e.count > 1">×{{ e.count }}</span></div>
+            <div class="mt-0.5 break-words font-mono text-soft">{{ e.message }}</div>
+          </li>
+        </ul>
+        <div class="flex gap-2 px-4 py-3">
+          <button class="flex-1 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white" @click="copyErrors">Копировать</button>
+          <button class="flex-1 rounded-lg border border-line px-3 py-2 text-sm font-medium" @click="shareErrors">Отправить</button>
+          <button class="rounded-lg border border-line px-3 py-2 text-sm font-medium text-bad" @click="clearErrors(); flash('Журнал очищен')">Очистить</button>
+        </div>
+      </template>
+    </div>
+
     <p v-if="msg" class="rounded-xl bg-accent-soft px-3 py-2 text-sm text-soft" role="status">{{ msg }}</p>
 
     <h2 class="h-section">О приложении</h2>
