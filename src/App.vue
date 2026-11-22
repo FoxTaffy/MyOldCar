@@ -11,11 +11,11 @@ import { showToast, toast } from '@/composables/useToast'
 import { useUpdate } from '@/composables/useUpdate'
 import { drawerOpen, showWizard, useUi } from '@/composables/useUi'
 import { useVehicle } from '@/composables/useVehicle'
+import { syncReminders } from '@/services/Reminders'
 
 const v = useVehicle()
 const route = useRoute()
 const up = useUpdate()
-useUi()
 const garage = useGarage()
 /** Новичок: пустого профиля машины нет — сначала обязательно добавляем автомобиль. */
 const welcome = ref(garage.needsFirstCar())
@@ -36,7 +36,12 @@ const tabs = [
 const bar = computed(() => (route.meta.bar as string | undefined) ?? 'none')
 /** Карта поездки — часть раздела «Поездки»: вкладка должна оставаться подсвеченной. */
 const activeTab = computed(() => (route.path.startsWith('/trip') ? '/stats' : route.path))
+const { ui } = useUi()
+/** Напоминания об обслуживании и документах: при запуске и при каждом возврате в приложение. */
+const reminders = (): void => { void syncReminders(garage.garage.cars, { enabled: ui.remindNotify, warnPct: ui.warnPct, warnDays: ui.docWarnDays }) }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reminders() })
 onMounted(() => {
+  setTimeout(reminders, 4000)
   v.autoStart()
   void up.check()
   // main.ts восстановил данные из зеркала (localStorage был очищен системой).

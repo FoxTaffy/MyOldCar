@@ -14,6 +14,8 @@ import type { AppSettings } from '@/types'
 import { applySnapshot, backupNow, flush, listBackups, makeSnapshot, parseSnapshot, readBackup, type BackupFile, type Snapshot } from '@/services/DurableStore'
 import { clearErrors, errorLog, errorReport } from '@/services/ErrorLog'
 import { saveTextFile } from '@/services/FileSave'
+import { ensureNotifyPermission } from '@/services/ReadyNotifier'
+import { syncReminders } from '@/services/Reminders'
 import { dateTime, todayISO } from '@/utils/format'
 
 const { ui } = useUi()
@@ -22,7 +24,13 @@ const { settings } = useVehicle()
 const up = useUpdate()
 const THEMES: { id: ThemeMode; label: string; icon: string }[] = [{ id: 'light', label: 'Светлая', icon: 'sun' }, { id: 'dark', label: 'Тёмная', icon: 'moon' }, { id: 'auto', label: 'Как в системе', icon: 'gear' }]
 const TIRES: { id: 'auto' | 'summer' | 'winter' | 'all'; label: string }[] = [{ id: 'auto', label: 'Не знаю' }, { id: 'summer', label: 'Летняя' }, { id: 'winter', label: 'Зимняя' }, { id: 'all', label: 'Всесезон' }]
-const pick = ref<'limit' | 'warn' | null>(null)
+const pick = ref<'limit' | 'warn' | 'docs' | null>(null)
+const DOC_WARNS = [7, 14, 30, 45].map((n) => ({ id: String(n), label: `за ${n} дн.` }))
+async function toggleRemind(on: boolean): Promise<void> {
+  ui.remindNotify = on
+  if (on && !(await ensureNotifyPermission())) flash('Уведомления запрещены — разрешите их в настройках Android')
+  void syncReminders(garage.cars, { enabled: ui.remindNotify, warnPct: ui.warnPct, warnDays: ui.docWarnDays })
+}
 const LIMITS = [90, 100, 110, 120, 130, 140].map((n) => ({ id: String(n), label: `${n} км/ч` }))
 const WARNS = [70, 80, 90].map((n) => ({ id: String(n), label: `${n} % интервала` }))
 const toggles: { key: keyof AppSettings; label: string; hint: string }[] = [
@@ -134,6 +142,8 @@ function wipeTrips(): void { if (confirm('Удалить все поездки? 
     <div class="card overflow-hidden">
       <button class="row" @click="pick = 'limit'"><span class="min-w-0"><span class="row-title">Порог превышения скорости</span><span class="row-sub">Для оценки стиля вождения; считается для новых поездок</span></span><span class="row-val">{{ ui.speedLimit }} км/ч</span></button>
       <button class="row" @click="pick = 'warn'"><span class="min-w-0"><span class="row-title">Напоминать об обслуживании</span><span class="row-sub">Когда выработано не меньше этой доли интервала</span></span><span class="row-val">{{ ui.warnPct }} %</span></button>
+      <ToggleRow :model-value="ui.remindNotify" title="Напоминания уведомлениями" sub="Об обслуживании и сроках документов — даже когда приложение закрыто" @update:model-value="toggleRemind" />
+      <button v-if="ui.remindNotify" class="row" @click="pick = 'docs'"><span class="min-w-0"><span class="row-title">Предупреждать об окончании документов</span><span class="row-sub">ОСАГО, техосмотр, налог — в журнале обслуживания</span></span><span class="row-val">за {{ ui.docWarnDays }} дн.</span></button>
       <label class="row"><span class="row-title">Цена топлива, {{ ui.currency }}/л</span><input v-model.number="garage.fuelPrice" type="number" min="0" step="0.5" inputmode="decimal" class="w-24 bg-transparent text-right text-sm font-medium text-accent outline-none"></label>
     </div>
 
@@ -236,6 +246,7 @@ function wipeTrips(): void { if (confirm('Удалить все поездки? 
     </div>
 
     <ChoiceSheet v-if="pick === 'limit'" title="Порог превышения скорости" :options="LIMITS" :model-value="String(ui.speedLimit)" @update:model-value="ui.speedLimit = Number($event)" @close="pick = null" />
+    <ChoiceSheet v-if="pick === 'docs'" title="Предупреждать об окончании документов" :options="DOC_WARNS" :model-value="String(ui.docWarnDays)" @update:model-value="ui.docWarnDays = Number($event)" @close="pick = null" />
     <ChoiceSheet v-if="pick === 'warn'" title="Напоминать об обслуживании" :options="WARNS" :model-value="String(ui.warnPct)" @update:model-value="ui.warnPct = Number($event)" @close="pick = null" />
   </section>
 </template>

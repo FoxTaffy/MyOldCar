@@ -1,5 +1,6 @@
 import { reactive, watch } from 'vue'
 import { carTitle, newCar, type Car } from '@/services/Cars'
+import type { CarDoc } from '@/services/CarDocs'
 import type { Expense } from '@/services/Expenses'
 import { itemStatus, type ServiceItem } from '@/services/Maintenance'
 import { DEFAULT_OIL, oilStatus } from '@/services/OilService'
@@ -289,6 +290,23 @@ export function useGarage() {
     removeServiceItem(id: string): void {
       const c = activeCar()
       c.services = c.services.filter((x) => x.id !== id)
+      saveNow()
+    },
+    /** Документы активной машины. */
+    docs: (): CarDoc[] => activeCar().docs ?? [],
+    saveDoc(d: Omit<CarDoc, 'id'> & { id?: string }): void {
+      const c = activeCar()
+      const list = c.docs ?? []
+      const doc: CarDoc = { ...d, id: d.id ?? `d${Date.now().toString(36)}` }
+      const i = list.findIndex((x) => x.id === doc.id)
+      if (i >= 0) list[i] = doc
+      else list.push(doc)
+      c.docs = [...list]
+      saveNow()
+    },
+    removeDoc(id: string): void {
+      const c = activeCar()
+      c.docs = (c.docs ?? []).filter((x) => x.id !== id)
       saveNow()
     },
     setLastDiag(count: number): void {

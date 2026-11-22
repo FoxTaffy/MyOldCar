@@ -10,12 +10,13 @@ import { currentOdometer } from '@/services/Cars'
 import { CATS, catTitle, consumptionFromFills, expenseYears, yearReport, monthKey, monthSeries, monthSummary, shiftMonth, type Expense, type ExpenseCat } from '@/services/Expenses'
 import { DEFAULT_ITEMS, itemStatus } from '@/services/Maintenance'
 import { carTitle } from '@/services/Cars'
+import { DOC_KINDS, docKindTitle, docStatus, suggestUntil, type DocKind } from '@/services/CarDocs'
 import { expensesToCsv } from '@/services/Export'
 import { saveTextFile } from '@/services/FileSave'
 import { showToast } from '@/composables/useToast'
 import { int, num, todayISO } from '@/utils/format'
 
-const { garage, car, oil, setOil, expenses, serviceItems, markServiced, addServiceItem, removeServiceItem, setOdometer, save } = useGarage()
+const { garage, car, oil, setOil, docs, saveDoc, removeDoc, expenses, serviceItems, markServiced, addServiceItem, removeServiceItem, setOdometer, save } = useGarage()
 const { ui } = useUi()
 const cur = ui.currency
 const money = (n: number): string => `${cur}${int(n)}`
@@ -44,6 +45,31 @@ async function exportCsv(): Promise<void> {
   const name = (id?: string) => carTitle(garage.cars.find((c) => c.id === id) ?? car())
   try { await saveTextFile(`myoldcar-expenses-${todayISO()}.csv`, 'text/csv', expensesToCsv(list.value, name)) } catch (e) { showToast(e instanceof Error ? e.message : 'Не удалось выгрузить') }
 }
+
+// Документы и сроки
+const docRows = computed(() => docs().map((d) => ({ d, st: docStatus(d, new Date(), ui.docWarnDays) })).sort((a, b) => a.st.daysLeft - b.st.daysLeft))
+const docEdit = ref<string | 'new' | null>(null)
+const docForm = reactive({ kind: 'osago' as DocKind, title: '', until: suggestUntil('osago'), note: '' })
+function openDoc(id: string | 'new'): void {
+  docEdit.value = id
+  const d = docs().find((x) => x.id === id)
+  if (d) Object.assign(docForm, { kind: d.kind, title: d.title, until: d.untilISO, note: d.note ?? '' })
+  else Object.assign(docForm, { kind: 'osago', title: '', until: suggestUntil('osago'), note: '' })
+}
+function pickKind(k: DocKind): void {
+  docForm.kind = k
+  if (docEdit.value === 'new') docForm.until = suggestUntil(k)
+}
+const docProblem = computed(() => (!docForm.until ? 'Укажите, до какого числа действует' : docForm.kind === 'custom' && !docForm.title.trim() ? 'Введите название' : null))
+function saveDocForm(): void {
+  if (docProblem.value) return
+  saveDoc({ id: docEdit.value === 'new' ? undefined : docEdit.value ?? undefined, kind: docForm.kind, title: docForm.kind === 'custom' ? docForm.title.trim() : docKindTitle(docForm.kind), untilISO: docForm.until, note: docForm.note.trim() || undefined })
+  docEdit.value = null
+}
+function dropDoc(): void {
+  if (docEdit.value && docEdit.value !== 'new' && confirm('Удалить документ?')) { removeDoc(docEdit.value); docEdit.value = null }
+}
+const fmtISO = (iso: string): string => iso.split('-').reverse().join('.')
 
 // Расходы
 const sheet = ref<{ edit?: Expense; cat?: ExpenseCat } | null>(null)
@@ -226,6 +252,17 @@ void itemStatus
     </div>
     <button class="btn-ghost w-full" @click="openItem('new')">+ Добавить позицию</button>
 
+    <!-- Документы -->
+    <h2 class="h-section">Документы и сроки</h2>
+    <div v-if="docRows.length" class="card divide-y divide-night-600">
+      <button v-for="r in docRows" :key="r.d.id" class="row w-full text-left" @click="openDoc(r.d.id)">
+        <span class="min-w-0"><span class="row-title">{{ r.d.title || docKindTitle(r.d.kind) }}</span><span class="row-sub">до {{ fmtISO(r.d.untilISO) }}<template v-if="r.d.note"> · {{ r.d.note }}</template></span></span>
+        <span class="text-right text-xs font-semibold" :class="{ ok: 'text-ok', warn: 'text-warn', bad: 'text-bad' }[r.st.level]">{{ r.st.text }}</span>
+      </button>
+    </div>
+    <p v-else class="px-1 text-sm text-faint">ОСАГО, техосмотр, водительское, налог — приложение напомнит заранее и в последний день.</p>
+    <button class="btn-ghost w-full" @click="openDoc('new')">+ Добавить документ</button>
+
     <!-- Пробег -->
     <h2 class="h-section">Пробег и владение</h2>
     <button class="card block w-full divide-y divide-night-600 text-left" @click="openCar">
@@ -238,6 +275,23 @@ void itemStatus
 
     <!-- FAB -->
     <button class="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-on shadow-lg active:scale-95" aria-label="Добавить расход" @click="sheet = {}"><AppIcon name="plus" :size="28" /></button>
+
+    <Sheet v-if="docEdit" :title="docEdit === 'new' ? 'Новый документ' : docForm.title || docKindTitle(docForm.kind)" @close="docEdit = null">
+      <div class="flex flex-wrap gap-2 pb-3">
+        <button v-for="k in DOC_KINDS" :key="k.id" class="rounded-xl border px-3 py-2 text-xs font-medium" :class="docForm.kind === k.id ? 'border-accent bg-accent-soft text-accent' : 'border-night-600 text-mute'" :aria-pressed="docForm.kind === k.id" @click="pickKind(k.id)">{{ k.title }}</button>
+      </div>
+      <p class="px-1 pb-2 text-xs text-faint">{{ DOC_KINDS.find((k) => k.id === docForm.kind)?.hint }}</p>
+      <div class="card overflow-hidden">
+        <label v-if="docForm.kind === 'custom'" class="row"><span class="row-title">Название</span><input v-model="docForm.title" class="min-w-0 flex-1 bg-transparent text-right text-sm outline-none placeholder:text-faint" placeholder="Например, аптечка"></label>
+        <label class="row"><span class="row-title">Действует до</span><input v-model="docForm.until" type="date" class="bg-transparent text-right text-sm font-medium text-accent outline-none"></label>
+        <label class="row"><span class="row-title">Заметка</span><input v-model="docForm.note" class="min-w-0 flex-1 bg-transparent text-right text-sm outline-none placeholder:text-faint" placeholder="номер полиса, страховая"></label>
+      </div>
+      <p v-if="docProblem" class="mt-2 px-1 text-sm text-bad">{{ docProblem }}</p>
+      <template #footer>
+        <button class="btn w-full" :disabled="!!docProblem" @click="saveDocForm">Сохранить</button>
+        <button v-if="docEdit !== 'new'" class="mt-2 w-full py-2 text-sm text-bad" @click="dropDoc">Удалить документ</button>
+      </template>
+    </Sheet>
 
     <ExpenseSheet v-if="sheet" :edit="sheet.edit" :cat="sheet.cat" @close="sheet = null" />
 
