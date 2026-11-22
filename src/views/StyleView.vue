@@ -7,7 +7,7 @@ import RingGauge from '@/components/RingGauge.vue'
 import Segmented from '@/components/Segmented.vue'
 import { useMyTrips } from '@/composables/useMyTrips'
 import { useUi } from '@/composables/useUi'
-import { avgScore, scoreByDay, scoreLabel, summarize, type StyleKind } from '@/services/DrivingStyle'
+import { avgScore, scoreByDay, scoreLabel, styleTips, summarize, type StyleKind } from '@/services/DrivingStyle'
 import { dayKey, int, num, span } from '@/utils/format'
 
 const { trips } = useMyTrips()
@@ -41,6 +41,13 @@ const titleOfPeriod = computed(() => {
 const tone = computed(() => (score.value == null ? 'text-faint' : score.value >= 75 ? 'text-ok' : score.value >= 55 ? 'text-warn' : 'text-bad'))
 const noStyle = computed(() => inPeriod.value.length > 0 && inPeriod.value.every((t) => !t.style))
 const hm = (ms: number): string => (ms > 0 ? span(ms) : '0 м')
+
+/** Советы — по последним 30 дням: за один день данных слишком мало. */
+const tips = computed(() => {
+  const s = summarize(trips.value.filter((t) => t.start >= Date.now() - 30 * 86400000))
+  const all = s.movingMs + s.stoppedMs
+  return styleTips(s, { idleShare: all > 0 ? s.stoppedMs / all : null, limitKmh: ui.speedLimit })
+})
 
 const rows = computed(() => [
   { icon: 'route', k: 'Дистанция', v: `${num(sum.value.km, 1)} км` },
@@ -88,6 +95,14 @@ const rows = computed(() => [
         <div class="min-w-0 flex-1"><div class="text-[15px]">{{ r.k }}</div><div v-if="r.s" class="text-[11px] leading-tight text-faint">{{ r.s }}</div></div>
         <div class="text-right font-bold tabular-nums"><div>{{ r.v }}</div><div v-if="r.v2" class="text-xs font-medium text-mute">{{ r.v2 }}</div></div>
       </div>
+    </div>
+
+    <div v-if="tips.length" class="card p-4">
+      <h2 class="label">Как ездить экономнее и безопаснее</h2>
+      <p class="mt-1 text-xs text-faint">По поездкам за 30 дней</p>
+      <ul class="mt-2 space-y-2 text-sm text-soft">
+        <li v-for="t in tips" :key="t" class="border-l-2 border-accent pl-3">{{ t }}</li>
+      </ul>
     </div>
   </section>
 </template>

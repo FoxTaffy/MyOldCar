@@ -1,6 +1,6 @@
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { Capacitor } from '@capacitor/core'
-import { createElmService, type ELMService } from '@/services/ELMService'
+import { createElmService, type AdapterInfo, type ELMService } from '@/services/ELMService'
 import { GpsService, type GpsState } from '@/services/GpsService'
 import { TripSession, type GpsFix } from '@/services/TripSession'
 import { destinationPoint } from '@/services/TripAnalysis'
@@ -139,6 +139,9 @@ const MAX_ERRORS = 3
 const EXTENDED_EVERY = 4
 /** Напряжение адаптера (ATRV) на заглушённом двигателе — раз в столько циклов. */
 const ATRV_EVERY = 20
+
+/** Сведения об адаптере (версия, предупреждение о клоне). */
+const adapter = ref<AdapterInfo | null>(null)
 
 /** Аккумулятор: показания покоя и зарядки по машинам (демо не пишем). */
 const batteryLog = ref<Record<string, BatteryEvent[]>>(loadBattery())
@@ -443,6 +446,9 @@ async function connect(auto = false): Promise<void> {
       status.value = 'connected'
       reconnectAttempts = 0
       logConn('Подключено')
+      adapter.value = kind === 'mock' ? null : svc.adapter
+      if (svc.adapter?.version && kind !== 'mock') logConn(`Адаптер: ${svc.adapter.version}`)
+      if (svc.adapter?.warning && kind !== 'mock') logConn(svc.adapter.warning)
       // Реальная поездка (по GPS) не должна продолжиться как демо и наоборот.
       if (session.active && session.demo !== (kind === 'mock')) endTrip()
       session.demo = kind === 'mock'
@@ -525,7 +531,7 @@ const ecuSilent = computed(() => {
 export function useVehicle() {
   return {
     prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, gpsState, gpsFix, gpsError, milOn, tripActive, protocolName, warmupInfo,
-    values, history, connectedAt, ecuStatus, motion, awaitingManual, connLog, batteryLog,
+    values, history, connectedAt, ecuStatus, motion, awaitingManual, connLog, batteryLog, adapter,
     liveTrip: () => session.snapshot(),
     session,
     isConnected: computed(() => status.value === 'connected'),

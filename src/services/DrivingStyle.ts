@@ -156,3 +156,22 @@ export function summarize(trips: Trip[]): StyleSummary {
   r.avgRpm = rpmW > 0 ? Math.round(rpmSum / rpmW) : null
   return r
 }
+
+/**
+ * Советы, как ездить безопаснее и экономнее, — по итогам периода. Пороги на 100 км, чтобы не зависеть от пробега.
+ * Не больше трёх советов, самые важные сверху.
+ */
+export function styleTips(s: StyleSummary, opts: { idleShare?: number | null; limitKmh?: number } = {}): string[] {
+  if (s.km < 20) return []
+  const per100 = (n: number) => (n / s.km) * 100
+  const tips: { w: number; text: string }[] = []
+  const acc = per100(s.accel)
+  const brk = per100(s.brake)
+  if (acc >= 3) tips.push({ w: acc, text: `Резких разгонов ${Math.round(acc)} на 100 км. Плавный разгон до 2500–3000 об/мин экономит до 10–15 % топлива.` })
+  if (brk >= 3) tips.push({ w: brk * 1.2, text: `Резких торможений ${Math.round(brk)} на 100 км. Держите дистанцию и отпускайте газ заранее — накат с включённой передачей не тратит топливо.` })
+  if (s.overKm / s.km >= 0.05) tips.push({ w: (s.overKm / s.km) * 100, text: `${Math.round((s.overKm / s.km) * 100)} % пути выше ${opts.limitKmh ?? 110} км/ч. На 130 вместо 110 расход растёт примерно на 20 %.` })
+  if (s.avgRpm != null && s.avgRpm > 2800) tips.push({ w: (s.avgRpm - 2800) / 100, text: `Средние обороты в движении ${s.avgRpm}. Переключайтесь выше раньше — на 2000–2500 об/мин двигатель работает экономичнее.` })
+  if (opts.idleShare != null && opts.idleShare >= 0.25) tips.push({ w: opts.idleShare * 20, text: `${Math.round(opts.idleShare * 100)} % времени двигатель работал на месте. Прогрев дольше 2–3 минут не нужен — лучше трогаться спокойно.` })
+  if (s.nightKm / s.km >= 0.3) tips.push({ w: 2, text: `${Math.round((s.nightKm / s.km) * 100)} % пробега ночью: проверьте фары и регулировку света, на трассе чаще отдыхайте.` })
+  return tips.sort((a, b) => b.w - a.w).slice(0, 3).map((t) => t.text)
+}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { showToast } from '@/composables/useToast'
 import { computed, ref } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import ChoiceSheet from '@/components/ChoiceSheet.vue'
@@ -70,7 +71,13 @@ const STEPS = [
   'Если соединение рвётся, увеличьте тайм-аут ответа до 8000 мс и число попыток подключения.',
   'На старых машинах (К-линия) оставьте протокол «AUTO»: первый поиск может занять до минуты.',
   'Выдайте приложению разрешения «Устройства поблизости» и «Геопозиция» — без них Android не покажет Bluetooth-адаптеры.',
+  'Адаптер «ELM327 v2.1» — почти всегда дешёвый клон: на К-линии (ВАЗ, М73, Январь) он теряет ответы. Если связь нестабильна, возьмите адаптер на прошивке v1.5, vLinker или OBDLink.',
+  'Проверьте предохранитель прикуривателя: от него у многих машин питается разъём OBD. Без питания адаптер не светится.',
+  'Не помогло — откройте «Журнал подключения» ниже, скопируйте его и приложите к вопросу: по нему видно, на каком шаге связь обрывается.',
 ]
+async function copyLog(): Promise<void> {
+  try { await navigator.clipboard.writeText(v.connLog.value.join('\n')); showToast('Журнал скопирован') } catch { showToast('Не удалось скопировать') }
+}
 </script>
 
 <template>
@@ -84,6 +91,8 @@ const STEPS = [
         <button v-else class="btn-ghost flex-1" @click="v.disconnect()">{{ status === 'connecting' ? 'Отмена' : 'Отключить' }}</button>
       </div>
       <p v-if="v.error.value" class="mt-2 text-xs text-bad">{{ v.error.value }}</p>
+      <p v-if="v.adapter.value?.version" class="mt-2 text-xs text-faint">Адаптер: {{ v.adapter.value.version }}</p>
+      <p v-if="v.adapter.value?.warning" class="mt-2 rounded-lg bg-warn/10 p-2 text-xs text-warn">{{ v.adapter.value.warning }}</p>
     </div>
 
     <div v-if="changed" class="flex items-center gap-3 rounded-xl border border-accent/40 bg-accent-soft p-3">
@@ -100,6 +109,7 @@ const STEPS = [
     <button class="flex w-full items-center gap-3 rounded-2xl card p-4 text-left" :aria-expanded="showLog" @click="showLog = !showLog">
       <span class="min-w-0 flex-1"><span class="block text-sm font-medium">Журнал подключения</span><span class="block text-xs text-mute">Этапы и ошибки — покажите, если не подключается</span></span>
     </button>
+    <button v-if="showLog && v.connLog.value.length" class="btn-ghost w-full !py-2 !text-xs" @click="copyLog">Скопировать журнал</button>
     <pre v-if="showLog" class="card max-h-64 overflow-auto whitespace-pre-wrap p-3 text-[11px] leading-relaxed text-soft">{{ v.connLog.value.length ? v.connLog.value.join('\n') : 'Пока пусто — нажмите «Подключить».' }}</pre>
 
     <div class="card overflow-hidden">

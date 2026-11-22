@@ -560,6 +560,28 @@ export interface FreezeFrame {
 
 export class ELMError extends Error {}
 
+export interface AdapterInfo {
+  /** Строка версии из ответа ATZ, например «ELM327 v1.5». */
+  version: string | null
+  /** Предупреждение о возможном клоне или null. */
+  warning: string | null
+}
+
+/**
+ * Настоящих ELM327 версии 2.x почти не бывает в продаже: «v2.1» — характерная прошивка дешёвых клонов,
+ * которые плохо держат К-линию (старые ВАЗ, ЭБУ Январь/М73) и теряют ответы. «v1.5» — тоже обычно клон,
+ * но рабочий. Адаптеры вроде OBDLink, vLinker, Kingbolen отвечают своим именем и проблем не вызывают.
+ */
+export function adapterInfo(atz: string): AdapterInfo {
+  const m = /(ELM327|STN\d+|OBDLink|vLinker|OBDII)[^\r\n>]*?v?(\d+\.\d+[a-z]?)/i.exec(atz)
+  const version = m ? `${m[1]} v${m[2]}` : (atz.replace(/[\r\n>]+/g, ' ').trim().slice(0, 40) || null)
+  let warning: string | null = null
+  if (/ELM327/i.test(atz) && /v2\.[1-3]/i.test(atz)) {
+    warning = 'Похоже на дешёвый клон ELM327 v2.1: с К-линией (старые ВАЗ, М73, Январь) такие часто теряют ответы и не находят ЭБУ. Если связь нестабильна — возьмите адаптер на прошивке v1.5 или vLinker/OBDLink.'
+  }
+  return { version, warning }
+}
+
 /**
  * ТОЛЬКО ЧТЕНИЕ. Приложение не должно ничего менять в ЭБУ и сбрасывать.
  * Белый список: служебные AT-команды самого адаптера (в т.ч. ATRV — напряжение бортсети, которое меряет адаптер) и запросы OBD-II на чтение
@@ -688,7 +710,8 @@ export class ELMService {
     await this.transport.connect()
     this.progress('Сброс адаптера…')
     // Первая команда после подключения по Bluetooth иногда теряется — один повтор вместо провала всей попытки.
-    await this.send('ATZ', 8000).catch(() => this.send('ATZ', 8000))
+    const id = await this.send('ATZ', 8000).catch(() => this.send('ATZ', 8000))
+    this.adapter = adapterInfo(id)
     // ATE0 — без эха, ATL0 — без переводов строк, ATH0 — без заголовков, ATAT1 — адаптивный таймаут
     // (К-линия отвечает медленнее CAN). Пробелы в ответах не отключаем: разбор к ним устойчив.
     for (const cmd of ['ATE0', 'ATL0', 'ATH0', 'ATAT1']) await this.send(cmd)
@@ -707,6 +730,9 @@ export class ELMService {
     this.progress(null)
     throw new ELMError('Адаптер на связи, но ЭБУ не отвечает. Включите зажигание (лучше заведите двигатель), проверьте, что адаптер плотно вставлен в разъём, и повторите.')
   }
+
+  /** Что за адаптер (по ответу на ATZ) и не похож ли он на проблемный клон. */
+  adapter: AdapterInfo | null = null
 
   /** Найденный протокол (номер ATDPN) — сохраняется, чтобы в следующий раз подключаться быстрее. */
   protocol: string | null = null
