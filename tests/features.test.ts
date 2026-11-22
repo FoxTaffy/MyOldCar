@@ -253,6 +253,7 @@ describe('BLE: стабильность', () => {
 
   it('отмена во время подключения останавливает повторы и освобождает GATT', async () => {
     const log: string[] = []
+    // eslint-disable-next-line prefer-const -- замыкание выше ссылается на t до присваивания
     let t!: BleTransport
     const fake: BleLike = {
       ...base(),
