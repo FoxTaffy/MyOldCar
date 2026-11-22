@@ -45,3 +45,73 @@ export function fuelSystemText(code: number | null): { text: string; level: Stat
     default: return { text: `Код режима ${code}`, level: 'warn' }
   }
 }
+
+/**
+ * Готовность мониторов, как её проверяют при OBD-инспекции: лампа не горит и не завершено
+ * не больше 1 теста (для машин 2001 года и новее) или 2 тестов (1996–2000).
+ * Много незавершённых тестов — признак того, что недавно стирали ошибки или отключали аккумулятор.
+ */
+export interface Readiness {
+  supported: number
+  incomplete: string[]
+  ready: boolean
+  allowed: number
+  text: string
+  level: StatusLevel
+}
+
+export function readiness(st: EcuStatus | null, modelYear?: number | null): Readiness | null {
+  if (!st) return null
+  const sup = st.monitors.filter((m) => m.supported)
+  if (!sup.length) return null
+  const incomplete = sup.filter((m) => !m.complete).map((m) => m.name)
+  const allowed = modelYear && modelYear <= 2000 ? 2 : 1
+  const ready = !st.mil && incomplete.length <= allowed
+  let text: string
+  let level: StatusLevel
+  if (st.mil) { text = 'Не готов: горит Check Engine'; level = 'bad' }
+  else if (!incomplete.length) { text = 'Все тесты завершены'; level = 'ok' }
+  else if (ready) { text = `Готов: не завершено тестов — ${incomplete.length} (допускается ${allowed})`; level = 'ok' }
+  else { text = `Не готов: не завершено тестов — ${incomplete.length}. Проездите 2–3 дня в разных режимах`; level = 'warn' }
+  return { supported: sup.length, incomplete, ready, allowed, text, level }
+}
+
+/** Сведения «с момента сброса ошибок» (PID 01 30, 31, 4E). */
+export interface SinceClear {
+  warmups: number | null
+  km: number | null
+  minutes: number | null
+}
+
+export function parseSinceClear(warm: number[] | null, dist: number[] | null, time: number[] | null): SinceClear | null {
+  const s: SinceClear = {
+    warmups: warm && warm.length >= 1 ? warm[0] : null,
+    km: dist && dist.length >= 2 ? dist[0] * 256 + dist[1] : null,
+    minutes: time && time.length >= 2 ? time[0] * 256 + time[1] : null,
+  }
+  return s.warmups == null && s.km == null && s.minutes == null ? null : s
+}
+
+/**
+ * Проверка при покупке: стирали ли ошибки незадолго до осмотра.
+ * Признаки: мало прогревов/километров с момента сброса и незавершённые тесты.
+ */
+export function recentlyCleared(sc: SinceClear | null, rd: Readiness | null): { suspicious: boolean; text: string } | null {
+  if (!sc && !rd) return null
+  const fewKm = sc?.km != null && sc.km < 200
+  const fewWarm = sc?.warmups != null && sc.warmups < 10
+  const manyIncomplete = !!rd && rd.incomplete.length >= 2
+  // Все тесты пройдены — значит, после сброса машина уже поездила; одного малого пробега мало для подозрения.
+  const suspicious = (fewKm || fewWarm) && (manyIncomplete || (fewKm && fewWarm && !(rd && !rd.incomplete.length)))
+  const parts: string[] = []
+  if (sc?.km != null) parts.push(`${sc.km} км`)
+  if (sc?.warmups != null) parts.push(`${sc.warmups} прогревов`)
+  if (sc?.minutes != null) parts.push(`${sc.minutes >= 60 ? `${Math.floor(sc.minutes / 60)} ч ` : ''}${sc.minutes % 60} мин работы двигателя`)
+  const since = parts.length ? `С момента сброса ошибок: ${parts.join(', ')}.` : ''
+  return {
+    suspicious,
+    text: suspicious
+      ? `${since} Похоже, ошибки стирали недавно — при покупке это повод насторожиться и прочитать их ещё раз через несколько дней.`
+      : since || 'Признаков недавнего сброса ошибок нет.',
+  }
+}

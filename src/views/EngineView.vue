@@ -6,10 +6,15 @@ import PageHeader from '@/components/PageHeader.vue'
 import { useMyTrips } from '@/composables/useMyTrips'
 import { useVehicle } from '@/composables/useVehicle'
 import { BUILTIN_SENSORS, levelOf } from '@/data/sensors'
-import { dayKey, num } from '@/utils/format'
+import { useGarage } from '@/composables/useGarage'
+import { batteryReport } from '@/services/Battery'
+import { dateTime, dayKey, num } from '@/utils/format'
 
 const v = useVehicle()
 const { trips } = useMyTrips()
+const { car } = useGarage()
+const bat = computed(() => batteryReport(v.batteryLog.value[car().id] ?? []))
+const LVL = { ok: 'text-ok', warn: 'text-warn', bad: 'text-bad' } as const
 v.pollMode.value = 'normal'
 
 const CELLS = ['coolant', 'map', 'intake', 'rpm', 'load', 'stft', 'ltft', 'maf']
@@ -69,6 +74,21 @@ const ecu = computed(() => v.ecuStatus.value)
       <div class="row"><span class="row-title">Лампа Check Engine</span><span class="text-sm font-bold" :class="ecu.mil ? 'text-bad' : 'text-ok'">{{ ecu.mil ? 'горит' : 'выключена' }}</span></div>
       <div class="row"><span class="row-title">Кодов неисправностей</span><span class="text-sm font-bold" :class="ecu.dtcCount ? 'text-bad' : 'text-ok'">{{ ecu.dtcCount }}</span></div>
       <div class="row"><span class="row-title">Тесты готовности</span><span class="text-sm font-bold text-soft">{{ ecu.monitors.filter((m) => m.supported && m.complete).length }} из {{ ecu.monitors.filter((m) => m.supported).length }}</span></div>
+    </div>
+
+    <div class="card p-4">
+      <div class="flex items-center gap-2"><AppIcon name="battery" class="text-accent" /><h2 class="label">Аккумулятор и генератор</h2></div>
+      <template v-if="bat.rest || bat.charge">
+        <dl class="rows mt-2">
+          <div v-if="bat.rest"><dt>В покое <span class="block text-[11px] text-faint">{{ dateTime(bat.rest.t) }}</span></dt><dd :class="LVL[bat.rest.level]">{{ num(bat.rest.v, 2) }} В</dd></div>
+          <div v-if="bat.charge"><dt>На работающем двигателе <span class="block text-[11px] text-faint">{{ dateTime(bat.charge.t) }}</span></dt><dd :class="LVL[bat.charge.level]">{{ num(bat.charge.v, 2) }} В</dd></div>
+        </dl>
+        <p v-if="bat.rest" class="mt-2 text-sm" :class="LVL[bat.rest.level]">{{ bat.rest.text }}</p>
+        <p v-if="bat.charge" class="mt-1 text-sm" :class="LVL[bat.charge.level]">{{ bat.charge.text }}</p>
+        <p v-if="bat.restTrend != null && bat.restTrend <= -0.15" class="mt-1 text-sm text-warn">Напряжение покоя снижается ({{ num(bat.restTrend, 2) }} В за последние замеры): аккумулятор теряет ёмкость или есть утечка тока.</p>
+      </template>
+      <p v-else class="mt-2 text-sm muted">Замеров пока нет. Подключитесь к машине до запуска двигателя: адаптер измерит напряжение покоя, а после минуты езды — зарядку генератора.</p>
+      <p class="mt-2 text-xs text-faint">В покое норма 12,6 В и выше, на работающем двигателе 13,5–14,8 В.</p>
     </div>
   </section>
 </template>

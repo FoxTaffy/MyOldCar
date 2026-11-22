@@ -56,6 +56,12 @@ interface Ui {
   yandexMapKey: string
   /** Какая резина стоит — чтобы не напоминать о переобувании зря. */
   tires: 'auto' | 'summer' | 'winter' | 'all'
+  /** Разрешить сброс ошибок (режим 04). По умолчанию выключено: приложение только читает. */
+  allowDtcClear: boolean
+  /** Напоминания об обслуживании и документах системными уведомлениями. */
+  remindNotify: boolean
+  /** За сколько дней предупреждать об окончании документов (ОСАГО, техосмотр…). */
+  docWarnDays: number
 }
 
 function load(): Ui {
@@ -63,7 +69,7 @@ function load(): Ui {
     theme: 'dark', fontStep: 0, animations: true, currency: '₽', speedLimit: 110, graphFill: true, zoneColors: true,
     homeStats: ['avgKm', 'avgTime', 'lastDiag'], menuOrder: MENU.map((m) => m.id), menuHidden: [],
     monitor: ['speed', 'rpm', 'coolant', 'load', 'throttle', 'voltage'], warnPct: 80, hintJournal: false,
-    weatherCard: true, yandexKey: '', yandexMapKey: '', tires: 'auto',
+    weatherCard: true, yandexKey: '', yandexMapKey: '', tires: 'auto', allowDtcClear: false, remindNotify: true, docWarnDays: 14,
   }
   try {
     const raw = localStorage.getItem(KEY)

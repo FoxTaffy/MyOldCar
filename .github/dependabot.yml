@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      capacitor:
+        patterns: ['@capacitor/*', '@capacitor-community/*', '@capacitor-mlkit/*', '@capawesome-team/*', '@capgo/*', 'capacitor-*']
+      lint:
+        patterns: ['eslint*', '@eslint/*', 'typescript-eslint', 'globals', 'vue-eslint-parser']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

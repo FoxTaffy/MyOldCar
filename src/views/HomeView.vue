@@ -5,6 +5,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
 import WeatherCard from '@/components/WeatherCard.vue'
 import { useGarage } from '@/composables/useGarage'
+import { docKindTitle, docStatus } from '@/services/CarDocs'
 import { useMyTrips } from '@/composables/useMyTrips'
 import { useUi } from '@/composables/useUi'
 import { useWash } from '@/composables/useWash'
@@ -17,7 +18,7 @@ import { num } from '@/utils/format'
 
 const router = useRouter()
 const v = useVehicle()
-const { garage, car, serviceItems, oil } = useGarage()
+const { garage, car, serviceItems, oil, docs } = useGarage()
 const { since } = useMyTrips()
 const { ui, menu } = useUi()
 const wash = useWash()
@@ -34,6 +35,9 @@ const due = computed(() => {
   for (const { it, st } of serviceItems()) if (st.configured && (st.pct >= ui.warnPct || st.overdueByTime)) list.push({ name: it.name, pct: st.pct, bad: st.level === 'bad' })
   return list.sort((a, b) => b.pct - a.pct)
 })
+
+/** Документы, срок которых подходит или вышел. */
+const docsDue = computed(() => docs().map((d) => ({ d, st: docStatus(d, new Date(), ui.docWarnDays) })).filter((x) => x.st.level !== 'ok').sort((a, b) => a.st.daysLeft - b.st.daysLeft))
 
 const live = computed(() => {
   const s = v.snapshot.value
@@ -108,6 +112,11 @@ const go = (to: string): void => { void router.push(to) }
     <RouterLink v-if="due.length" to="/service" class="flex items-center gap-3 rounded-lg border border-warn/50 bg-warn/10 p-3">
       <AppIcon name="wrench" class="shrink-0 text-warn" />
       <span class="min-w-0 text-sm"><b class="text-warn">Пора обслужить:</b> <span class="text-soft">{{ due.slice(0, 3).map((d) => d.name.toLowerCase()).join(', ') }}<template v-if="due.length > 3"> и ещё {{ due.length - 3 }}</template></span></span>
+    </RouterLink>
+
+    <RouterLink v-for="x in docsDue.slice(0, 2)" :key="x.d.id" to="/service" class="flex items-center gap-3 rounded-lg border p-3" :class="x.st.level === 'bad' ? 'border-bad/50 bg-bad/10' : 'border-warn/50 bg-warn/10'">
+      <AppIcon name="doc" class="shrink-0" :class="x.st.level === 'bad' ? 'text-bad' : 'text-warn'" />
+      <span class="min-w-0 text-sm"><b :class="x.st.level === 'bad' ? 'text-bad' : 'text-warn'">{{ x.d.title || docKindTitle(x.d.kind) }}:</b> <span class="text-soft">{{ x.st.text.toLowerCase() }}</span></span>
     </RouterLink>
 
     <RouterLink v-if="wash.advice.value.level === 'now' || wash.advice.value.level === 'soon' || wash.advice.value.level === 'frost' || wash.advice.value.level === 'wait'" to="/wash" class="flex items-center gap-3 rounded-lg border border-night-600 bg-accent-soft p-3">

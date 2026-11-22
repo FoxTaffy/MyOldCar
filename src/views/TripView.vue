@@ -10,6 +10,9 @@ import type { MapAdapter } from '@/services/map/MapAdapter'
 import { placeName } from '@/services/Geocoder'
 import { analyzeTrack, nearestPoint, speedColor, type TrackPoint } from '@/services/TripAnalysis'
 import { tripAvgSpeed, tripConsumption, type Trip } from '@/services/TripRecorder'
+import { trackToCsv, trackToGpx } from '@/services/Export'
+import { saveTextFile } from '@/services/FileSave'
+import { showToast } from '@/composables/useToast'
 import { dateTime, liters, num, span } from '@/utils/format'
 
 const route = useRoute()
@@ -230,6 +233,17 @@ onBeforeUnmount(() => {
   map = null
 })
 
+/** Выгрузка трека: GPX для карт и навигаторов, CSV со всеми показаниями для Excel. */
+async function exportTrack(kind: 'gpx' | 'csv'): Promise<void> {
+  if (!trip.value || !points.value.length) return
+  const d = new Date(trip.value.start)
+  const stamp = `${d.toISOString().slice(0, 10)}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`
+  try {
+    if (kind === 'gpx') await saveTextFile(`myoldcar-trip-${stamp}.gpx`, 'application/gpx+xml', trackToGpx(points.value, `Поездка ${dateTime(trip.value.start)}`))
+    else await saveTextFile(`myoldcar-trip-${stamp}.csv`, 'text/csv', trackToCsv(points.value))
+  } catch (e) { showToast(e instanceof Error ? e.message : 'Не удалось выгрузить') }
+}
+
 const legend = [0, 30, 60, 90, 120]
 const cost = computed(() => (trip.value && trip.value.fuelL > 0 ? trip.value.fuelL * garage.fuelPrice : null))
 </script>
@@ -252,6 +266,10 @@ const cost = computed(() => (trip.value && trip.value.fuelL > 0 ? trip.value.fue
         <button v-if="isLive && hasRoute && !follow" class="btn-ghost btn-sm !py-1 !text-[10px]" @click="resumeFollow">Следить</button>
         <button v-if="hasRoute" class="btn-ghost btn-sm !py-1 !text-[10px]" @click="showAll">Весь маршрут</button>
       </span>
+    </div>
+    <div v-if="!isLive && trip && points.length" class="flex gap-2">
+      <button class="btn-ghost flex-1 !py-2 !text-xs" :disabled="!hasRoute" @click="exportTrack('gpx')">Трек в GPX</button>
+      <button class="btn-ghost flex-1 !py-2 !text-xs" @click="exportTrack('csv')">Показания в CSV</button>
     </div>
 
     <div v-if="trip" class="tiles grid-cols-4 text-center">

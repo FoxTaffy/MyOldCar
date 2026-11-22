@@ -9,6 +9,8 @@ import { useMyTrips } from '@/composables/useMyTrips'
 import { useUi } from '@/composables/useUi'
 import { useVehicle } from '@/composables/useVehicle'
 import { consumptionFromFills } from '@/services/Expenses'
+import { currentOdometer } from '@/services/Cars'
+import { fuelRange } from '@/services/FuelRange'
 import { Ema, fuelLitersPer100Km, fuelLitersPerHour } from '@/services/FuelCalculator'
 import { dayKey, int, num } from '@/utils/format'
 
@@ -60,6 +62,9 @@ const picked = ref(days.value[days.value.length - 1].key)
 const fills = computed(() => consumptionFromFills(expenses()))
 const level = computed(() => v.values.value.fuellvl ?? null)
 
+/** Запас хода: расход берём по заправкам (честнее), иначе по поездкам за 30 дней. */
+const range = computed(() => fuelRange({ tankL: car().tankL, levelPct: level.value, l100: fills.value?.l100 ?? avg100.value, odometerKm: currentOdometer(car()), fills: expenses() }))
+
 const settings = ref(false)
 const FUELS = ['АИ-92', 'АИ-95', 'АИ-98', 'ДТ', 'Газ']
 const bar = (x: number | null, max: number): string => (x == null ? '0%' : Math.min(100, (x / max) * 100) + '%')
@@ -98,6 +103,13 @@ void int
         <div class="p-4"><div class="text-sm text-mute">Уровень топлива</div><div class="mt-1 text-2xl font-bold tabular-nums">{{ level != null ? num(level, 0) : '—' }} <span class="text-sm font-normal text-faint">%</span></div><div class="text-xs text-faint">{{ level != null && car().tankL ? '≈ ' + num((level / 100) * car().tankL!, 0) + ' л в баке' : 'ЭБУ может не отдавать' }}</div></div>
       </div>
     </div>
+
+    <div v-if="range" class="card flex items-center gap-3 p-4" :class="range.low ? '!border-warn' : ''">
+      <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent"><AppIcon name="pump" /></span>
+      <span class="min-w-0 flex-1 text-sm text-soft">Запас хода<span class="block text-xs text-faint">≈ {{ num(range.litersLeft, 0) }} л при {{ num(range.l100, 1) }} л/100 · {{ range.source === 'sensor' ? 'по датчику уровня' : 'от последнего полного бака' }}</span></span>
+      <span class="text-xl font-bold tabular-nums" :class="range.low ? 'text-warn' : ''">{{ int(range.km) }} <span class="text-xs font-normal text-faint">км</span></span>
+    </div>
+    <p v-else-if="!car().tankL" class="px-1 text-xs text-faint">Укажите объём бака в профиле машины — приложение посчитает запас хода.</p>
 
     <div class="card p-4">
       <h2 class="mb-3 text-lg font-bold">Расход по дням, л/100 км</h2>

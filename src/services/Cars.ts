@@ -1,3 +1,4 @@
+import type { CarDoc } from './CarDocs'
 import { defaultServices, type ServiceItem } from './Maintenance'
 import { DEFAULT_OIL, type OilState } from './OilService'
 
@@ -39,11 +40,13 @@ export interface Car {
   services: ServiceItem[]
   /** Последнее чтение ошибок: когда и сколько кодов. */
   lastDiag: { at: number; count: number } | null
+  /** Документы и сроки (ОСАГО, техосмотр…). У старых профилей нет. */
+  docs?: CarDoc[]
   /** Пустой профиль нового пользователя: пока не заполнен, приложение просит добавить машину. */
   placeholder?: boolean
 }
 
-export type CarPreset = Partial<Omit<Car, 'id' | 'oil' | 'trackedTotalKm' | 'odometerKm' | 'odometerTrackedAt' | 'purchaseISO' | 'purchaseKm' | 'services' | 'lastDiag'>> & { label: string }
+export type CarPreset = Partial<Omit<Car, 'id' | 'oil' | 'trackedTotalKm' | 'odometerKm' | 'odometerTrackedAt' | 'purchaseISO' | 'purchaseKm' | 'services' | 'lastDiag' | 'docs'>> & { label: string }
 
 /** Типовые характеристики для быстрого заполнения (можно поправить руками). */
 export const CAR_PRESETS: CarPreset[] = [
