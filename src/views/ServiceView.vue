@@ -7,8 +7,12 @@ import Sheet from '@/components/Sheet.vue'
 import { useGarage } from '@/composables/useGarage'
 import { useUi } from '@/composables/useUi'
 import { currentOdometer } from '@/services/Cars'
-import { CATS, catTitle, consumptionFromFills, monthKey, monthSeries, monthSummary, shiftMonth, type Expense, type ExpenseCat } from '@/services/Expenses'
+import { CATS, catTitle, consumptionFromFills, expenseYears, yearReport, monthKey, monthSeries, monthSummary, shiftMonth, type Expense, type ExpenseCat } from '@/services/Expenses'
 import { DEFAULT_ITEMS, itemStatus } from '@/services/Maintenance'
+import { carTitle } from '@/services/Cars'
+import { expensesToCsv } from '@/services/Export'
+import { saveTextFile } from '@/services/FileSave'
+import { showToast } from '@/composables/useToast'
 import { int, num, todayISO } from '@/utils/format'
 
 const { garage, car, oil, setOil, expenses, serviceItems, markServiced, addServiceItem, removeServiceItem, setOdometer, save } = useGarage()
@@ -28,6 +32,18 @@ const diff = (a: number, b: number): string => (a === b ? '0' : `${a > b ? '+' :
 const monthList = computed(() => list.value.filter((e) => monthKey(e.date) === ym.value))
 const cons = computed(() => consumptionFromFills(list.value))
 const isCurrentMonth = computed(() => ym.value === monthKey(todayISO()))
+
+// Стоимость владения за год
+const years = computed(() => { const y = expenseYears(list.value); const now = new Date().getFullYear(); return y.includes(now) ? y : [now, ...y] })
+const year = ref(new Date().getFullYear())
+const yearKm = computed(() => garage.trips.filter((t) => t.carId === garage.activeCarId && !t.demo && new Date(t.start).getFullYear() === year.value).reduce((s, t) => s + t.distanceKm, 0))
+const yr = computed(() => yearReport(list.value, year.value, yearKm.value > 1 ? yearKm.value : null))
+const yrCats = computed(() => CATS.filter((c) => yr.value.byCat[c.id].amount > 0))
+async function exportCsv(): Promise<void> {
+  if (!list.value.length) { showToast('Журнал пуст'); return }
+  const name = (id?: string) => carTitle(garage.cars.find((c) => c.id === id) ?? car())
+  try { await saveTextFile(`myoldcar-expenses-${todayISO()}.csv`, 'text/csv', expensesToCsv(list.value, name)) } catch (e) { showToast(e instanceof Error ? e.message : 'Не удалось выгрузить') }
+}
 
 // Расходы
 const sheet = ref<{ edit?: Expense; cat?: ExpenseCat } | null>(null)
@@ -153,6 +169,23 @@ void itemStatus
       <span class="min-w-0 flex-1 text-sm text-soft">Средний расход по заправкам<span class="block text-xs text-faint">за {{ int(cons.km) }} км, {{ num(cons.liters, 0) }} л</span></span>
       <span class="text-xl font-bold tabular-nums">{{ num(cons.l100, 1) }} <span class="text-xs font-normal text-faint">л/100</span></span>
     </div>
+
+    <div v-if="yr.total > 0" class="card p-4">
+      <div class="flex items-center justify-between gap-2">
+        <h2 class="label">Стоимость владения</h2>
+        <select v-model.number="year" class="bg-transparent text-sm font-medium text-accent outline-none" aria-label="Год">
+          <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+        </select>
+      </div>
+      <div class="mt-1 text-2xl font-bold tabular-nums">{{ money(yr.total) }}</div>
+      <div class="mt-1 text-sm text-mute">
+        {{ money(yr.perMonth) }} в месяц<template v-if="yr.perKm"> · {{ num(yr.perKm, 1) }} {{ cur }}/км за {{ int(yr.km) }} км</template>
+      </div>
+      <dl class="rows mt-2">
+        <div v-for="c in yrCats" :key="c.id"><dt>{{ c.title }}</dt><dd>{{ money(yr.byCat[c.id].amount) }} <span class="text-faint">· {{ num(yr.byCat[c.id].pct, 0) }}%</span></dd></div>
+      </dl>
+    </div>
+    <button v-if="list.length" class="btn-ghost w-full" @click="exportCsv">Выгрузить журнал в CSV (Excel)</button>
 
     <!-- Записи месяца -->
     <template v-if="monthList.length">

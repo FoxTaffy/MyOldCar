@@ -7,6 +7,10 @@ import { useGarage } from '@/composables/useGarage'
 import { useVehicle } from '@/composables/useVehicle'
 import { sensorLines, tripReport, tripSummaryText } from '@/services/TripSummary'
 import { tripAvgSpeed, tripConsumption, type Trip } from '@/services/TripRecorder'
+import { carTitle } from '@/services/Cars'
+import { tripsToCsv } from '@/services/Export'
+import { saveTextFile } from '@/services/FileSave'
+import { showToast } from '@/composables/useToast'
 import { dateTime, dayKey, int, liters, num, span, time } from '@/utils/format'
 
 const { garage, clearTrips, deleteTrip } = useGarage()
@@ -62,6 +66,12 @@ const sourceText = { obd: 'OBD', gps: 'GPS', both: 'OBD + GPS' } as const
 
 function askDelete(id: string): void {
   if (confirm('Удалить поездку?')) deleteTrip(id)
+}
+
+async function exportCsv(): Promise<void> {
+  const list = trips.value.filter((t) => t.id !== 'live').sort((a, b) => a.start - b.start)
+  const name = (id?: string) => carTitle(garage.cars.find((c) => c.id === id) ?? garage.cars[0])
+  try { await saveTextFile(`myoldcar-trips-${period.value}-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv', tripsToCsv(list, name, garage.fuelPrice)) } catch (e) { showToast(e instanceof Error ? e.message : 'Не удалось выгрузить') }
 }
 
 function wipe(): void {
@@ -150,6 +160,7 @@ function wipe(): void {
         </div>
       </article>
 
+      <button v-if="trips.length" class="btn-ghost w-full" @click="exportCsv">Выгрузить поездки за период в CSV</button>
       <button v-if="mine.length" class="btn-ghost w-full" @click="wipe">Очистить историю</button>
     </template>
   </section>

@@ -4,7 +4,7 @@ import {
   ChevronUp, CircleHelp, Download, Droplet, Fuel, Gauge, GripVertical, House, Info, Leaf, List, Lock, MapPin,
   MessageCircleQuestion, Menu, Minus, Moon, MoonStar, Pencil, Plug, Plus, RefreshCw, Route, Scan, ScanSearch, Settings, Share,
   Shield, ShieldCheck, ShowerHead, SquareParking, Sun, Thermometer, Timer, Trash2, TriangleAlert, User, Wallet, Wifi, Wrench, X,
-  CarFront,
+  CarFront, FileText, Receipt, CalendarClock, Signpost, FileDown, Package,
 } from 'lucide-vue-next'
 
 /** Значки Lucide (ISC), цвет — currentColor. Имена — прежние, поэтому экраны не менялись. */
@@ -22,6 +22,7 @@ const ICONS = {
   shower: ShowerHead, wrench: Wrench, pin: MapPin, shield: Shield, shieldcheck: ShieldCheck, chart: ChartColumn, download: Download,
   share: Share, plug: Plug, lock: Lock, user: User, drag: GripVertical, moon: Moon, sun: Sun, battery: Battery, therm: Thermometer,
   moonstar: MoonStar, wallet: Wallet, bell: Bell, camera: Camera, refresh: RefreshCw, list: List, swap: ArrowLeftRight,
+  doc: FileText, receipt: Receipt, calendar: CalendarClock, road: Signpost, export: FileDown, box: Package,
 } as const
 </script>
 
