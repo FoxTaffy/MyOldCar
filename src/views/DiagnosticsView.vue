@@ -154,7 +154,7 @@ const barColor = (p: number) => (p >= 50 ? 'bg-bad' : p >= 25 ? 'bg-warn' : 'bg-
         <div v-if="report.protocol"><dt>Протокол</dt><dd class="!font-sans">{{ report.protocol }}</dd></div>
       </dl>
       <p v-if="!results.length" class="mt-2 text-sm muted">Память ЭБУ чиста: ни сохранённых, ни временных кодов.</p>
-      <p v-if="gone.length" class="mt-2 text-sm text-ok">Пропали с прошлого чтения: <span class="font-mono">{{ gone.join(', ') }}</span></p>
+      <p v-if="gone.length && !clearedAt" class="mt-2 text-sm text-ok">Пропали с прошлого чтения: <span class="font-mono">{{ gone.join(', ') }}</span></p>
       <p v-if="clearedAt" class="mt-2 text-sm text-ok">Ошибки стёрты. Если неисправность осталась, код вернётся — прочитайте ещё раз после поездки.</p>
       <button v-if="ui.allowDtcClear && (results.length || report.milOn)" class="btn-ghost mt-3 w-full !border-bad !text-bad" :disabled="!isConnected || clearing || busy" @click="askClear">{{ clearing ? 'Сброс…' : 'Стереть ошибки' }}</button>
       <p v-if="!ui.allowDtcClear" class="mt-2 text-xs text-faint">Приложение только читает коды. Сброс ошибок можно включить в настройках.</p>

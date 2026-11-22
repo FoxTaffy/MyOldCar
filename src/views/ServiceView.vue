@@ -34,6 +34,9 @@ const monthList = computed(() => list.value.filter((e) => monthKey(e.date) === y
 const cons = computed(() => consumptionFromFills(list.value))
 const isCurrentMonth = computed(() => ym.value === monthKey(todayISO()))
 
+/** Основные категории — всегда; остальные (страховка, дороги, прочее) — если в этом или прошлом месяце были траты. */
+const monthCats = computed(() => CATS.filter((c) => ['fuel', 'service', 'wash'].includes(c.id) || sum.value.byCat[c.id].amount > 0 || prev.value.byCat[c.id].amount > 0))
+
 // Стоимость владения за год
 const years = computed(() => { const y = expenseYears(list.value); const now = new Date().getFullYear(); return y.includes(now) ? y : [now, ...y] })
 const year = ref(new Date().getFullYear())
@@ -183,7 +186,7 @@ void itemStatus
     </div>
 
     <div class="card divide-y divide-night-600">
-      <button v-for="c in CATS" :key="c.id" class="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-night-700" @click="sheet = { cat: c.id }">
+      <button v-for="c in monthCats" :key="c.id" class="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-night-700" @click="sheet = { cat: c.id }">
         <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent"><AppIcon :name="c.icon" /></span>
         <span class="min-w-0 flex-1"><span class="block text-[15px] font-semibold">{{ c.title }}</span><span class="text-xs text-faint tabular-nums">{{ num(sum.byCat[c.id].pct, 1) }}%<template v-if="c.id === 'fuel' && sum.liters"> · {{ num(sum.liters, 1) }} л</template></span></span>
         <span class="text-right"><span class="block text-base font-bold tabular-nums">{{ money(sum.byCat[c.id].amount) }}</span><span class="text-xs text-faint tabular-nums">{{ diff(sum.byCat[c.id].amount, prev.byCat[c.id].amount) }}</span></span>

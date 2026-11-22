@@ -101,11 +101,12 @@ export function recentlyCleared(sc: SinceClear | null, rd: Readiness | null): { 
   const fewKm = sc?.km != null && sc.km < 200
   const fewWarm = sc?.warmups != null && sc.warmups < 10
   const manyIncomplete = !!rd && rd.incomplete.length >= 2
-  const suspicious = (fewKm || fewWarm) && (manyIncomplete || fewKm)
+  // Все тесты пройдены — значит, после сброса машина уже поездила; одного малого пробега мало для подозрения.
+  const suspicious = (fewKm || fewWarm) && (manyIncomplete || (fewKm && fewWarm && !(rd && !rd.incomplete.length)))
   const parts: string[] = []
   if (sc?.km != null) parts.push(`${sc.km} км`)
   if (sc?.warmups != null) parts.push(`${sc.warmups} прогревов`)
-  if (sc?.minutes != null) parts.push(`${Math.floor(sc.minutes / 60)} ч ${sc.minutes % 60} мин работы двигателя`)
+  if (sc?.minutes != null) parts.push(`${sc.minutes >= 60 ? `${Math.floor(sc.minutes / 60)} ч ` : ''}${sc.minutes % 60} мин работы двигателя`)
   const since = parts.length ? `С момента сброса ошибок: ${parts.join(', ')}.` : ''
   return {
     suspicious,

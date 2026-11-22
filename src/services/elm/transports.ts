@@ -401,9 +401,9 @@ export class MockTransport implements Transport {
       case '0146': return `41 46 ${hex(12 + 40, 1)}`
       case '012F': return `41 2F ${hex(0.62 * 255, 1)}`
       case '0142': return `41 42 ${hex(14200 + Math.sin(Date.now() / 3000) * 150, 2)}`
-      case '0130': return `41 30 ${hex(this.cleared ? 0 : 3, 1)}`
-      case '0131': return `41 31 ${hex(this.cleared ? 0 : 45, 2)}`
-      case '014E': return `41 4E ${hex(this.cleared ? 0 : 95, 2)}`
+      case '0130': return `41 30 ${hex(this.cleared ? 0 : 120, 1)}`
+      case '0131': return `41 31 ${hex(this.cleared ? 0 : 3500, 2)}`
+      case '014E': return `41 4E ${hex(this.cleared ? 0 : 6200, 2)}`
       case '04':
         this.opts.dtcs = []
         this.opts.pending = []

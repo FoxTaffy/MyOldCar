@@ -79,3 +79,11 @@ describe('сброс ошибок', () => {
     await expect(elm.clearDtcs()).rejects.toThrow(/заглушите двигатель/)
   })
 })
+
+describe('признаки сброса', () => {
+  it('все тесты пройдены и мало км, но много прогревов — не подозрительно', () => {
+    const rd = readiness(parseStatus([0x00, 0x07, 0xe5, 0x00], null))
+    expect(recentlyCleared(parseSinceClear([40], [0, 45], [0, 30]), rd)?.suspicious).toBe(false)
+    expect(recentlyCleared(parseSinceClear([40], [0, 45], [0, 30]), rd)?.text).toMatch(/30 мин работы/)
+  })
+})
