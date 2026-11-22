@@ -194,7 +194,7 @@ async function finish(): Promise<void> {
 
         <section v-else class="space-y-3">
           <p class="text-sm muted">Подключение: <b class="text-ink">{{ summary }}</b>.</p>
-          <p class="text-sm muted">Приложение только читает данные из ЭБУ и ничего в нём не меняет. Настройки открываются кнопкой справа вверху, профиль машины — по её названию в шапке.</p>
+          <p class="text-sm muted">Приложение только читает данные из ЭБУ и ничего в нём не меняет (сброс ошибок можно отдельно включить в настройках). Настройки открываются кнопкой справа вверху, профиль машины — по её названию в шапке.</p>
           <label class="flex items-center gap-3 text-sm"><input v-model="connectNow" type="checkbox" /> Подключиться сразу</label>
         </section>
       </div>

@@ -160,7 +160,7 @@ const gpsText = computed(() => {
       </div>
     </div>
 
-    <RouterLink to="/service" class="card block p-3">
+    <RouterLink to="/service" class="card block p-3" aria-label="Моторное масло — журнал обслуживания">
       <OilGauge :status="oil()" :interval-km="car().oil.intervalKm" :changed-at="car().oil.dateISO" />
     </RouterLink>
     <p v-if="!isConnected && status === 'connecting'" class="text-center text-xs muted">Идёт подключение — первый поиск протокола ЭБУ может занять до минуты.</p>
