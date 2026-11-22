@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core'
 import { parseStatus, type EcuStatus } from './EcuStatus'
+import { parseAdapterVoltage } from './Battery'
 import { TcpSocket } from 'capacitor-tcp-socket'
 import { BleClient, type BleService, type ScanResult } from '@capacitor-community/bluetooth-le'
 import type { ConnectionKind, SensorSnapshot } from '@/types'
@@ -376,6 +377,7 @@ export class MockTransport implements Transport {
   }
 
   private reply(cmd: string): string {
+    if (cmd === 'ATRV') return '12.5V'
     if (cmd.startsWith('AT')) return cmd === 'ATZ' ? 'ELM327 v1.5' : cmd === 'ATDPN' ? 'A5' : 'OK'
     const s = this.sim()
     const hex = (n: number, bytes: number) =>
@@ -560,12 +562,12 @@ export class ELMError extends Error {}
 
 /**
  * ТОЛЬКО ЧТЕНИЕ. Приложение не должно ничего менять в ЭБУ и сбрасывать.
- * Белый список: служебные AT-команды самого адаптера и запросы OBD-II на чтение
+ * Белый список: служебные AT-команды самого адаптера (в т.ч. ATRV — напряжение бортсети, которое меряет адаптер) и запросы OBD-II на чтение
  * (01 — текущие данные, 02 — стоп-кадр, 03/07/0A — коды ошибок, 09 — сведения об авто).
  * Режимы 04 (сброс ошибок), 08 (управление), 05/06 и любые сервисы записи/диагностических
  * сессий (10, 11, 14, 27, 2E, 2F, 31, 3B, 3D…) блокируются до отправки в адаптер.
  */
-const SAFE_AT = /^AT(Z|E0|L0|H0|S0|AT1|SP[0-9A-C]|DPN|DP|I)$/
+const SAFE_AT = /^AT(Z|E0|L0|H0|S0|AT1|SP[0-9A-C]|DPN|DP|I|RV)$/
 const SAFE_OBD = /^(01|02|03|07|09|0A)([0-9A-F]{2}){0,3}$/
 
 export function isReadOnlyCommand(cmd: string): boolean {
@@ -856,6 +858,11 @@ export class ELMService {
     const r = (await this.exec('04', Math.max(this.cfg.timeoutMs, 10000))).replace(/\s/g, '').toUpperCase()
     if (/^7F04/.test(r) || r.includes('7F04')) throw new ELMError('ЭБУ отказал в сбросе: заглушите двигатель, оставьте зажигание включённым и повторите')
     if (!r.includes('44')) throw new ELMError(NO_ANSWER.test(r) ? 'ЭБУ не ответил на сброс — включено ли зажигание?' : `Неожиданный ответ на сброс: ${r}`)
+  }
+
+  /** Напряжение бортсети, которое меряет сам адаптер (работает и при выключенном зажигании). */
+  async readAdapterVoltage(): Promise<number | null> {
+    try { return parseAdapterVoltage(await this.send('ATRV', 2000)) } catch { return null }
   }
 
   /** Пробег, прогревы и время работы с момента последнего сброса ошибок (PID 30, 31, 4E). */

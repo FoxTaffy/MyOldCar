@@ -12,6 +12,7 @@ import { Notifier } from '@/services/Notifier'
 import type { SensorDef } from '@/data/sensors'
 import type { MotionResult } from '@/services/MotionState'
 import { WarmupTracker, type WarmupInfo } from '@/services/WarmupTracker'
+import { addBatteryEvent, BatteryTracker, loadBattery, type BatteryEvent } from '@/services/Battery'
 import { useGarage } from '@/composables/useGarage'
 import { useUi } from '@/composables/useUi'
 import { DEFAULT_SETTINGS, type AppSettings, type ConnectionKind, type ConnectionMode, type SensorSnapshot } from '@/types'
@@ -136,6 +137,17 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
 const MAX_ERRORS = 3
 const EXTENDED_EVERY = 4
+/** Напряжение адаптера (ATRV) на заглушённом двигателе — раз в столько циклов. */
+const ATRV_EVERY = 20
+
+/** Аккумулятор: показания покоя и зарядки по машинам (демо не пишем). */
+const batteryLog = ref<Record<string, BatteryEvent[]>>(loadBattery())
+let battery = new BatteryTracker()
+function feedBattery(rpm: number | null, volt: number | null): void {
+  if (via.value === 'mock') return
+  const e = battery.feed({ t: Date.now(), rpm, volt })
+  if (e) batteryLog.value = addBatteryEvent(batteryLog.value, garage.car().id, e)
+}
 
 /* ---------- опрос ---------- */
 
@@ -159,8 +171,13 @@ async function pollLoop(token: number, service: ELMService): Promise<void> {
       } else {
         const core = await service.readSnapshot(false)
         // Редкие PID читаем раз в несколько циклов, между ними показываем последние значения.
-        if (cycle % EXTENDED_EVERY === 0) ext = await service.readExtended()
+        if (cycle % EXTENDED_EVERY === 0) {
+          ext = await service.readExtended()
+          feedBattery(core.rpm, ext.voltage ?? null)
+        }
         if (cycle % STATUS_EVERY === 0) ecuStatus.value = await service.readStatus()
+        // Двигатель не работает (или ЭБУ молчит) — напряжение аккумулятора меряет сам адаптер.
+        if (cycle % ATRV_EVERY === 0 && !(core.rpm != null && core.rpm > 300)) feedBattery(core.rpm, await service.readAdapterVoltage())
         cycle++
         snap = { ...core, ...ext }
       }
@@ -432,6 +449,7 @@ async function connect(auto = false): Promise<void> {
       session.setCar(garage.car().id)
       warmup.reset()
       warmupInfo.value = warmup.info()
+      battery = new BatteryTracker()
       void ensureNotifyPermission()
       connectedAt.value = Date.now()
       void notifier.start(() => ({ since: connectedAt.value ?? Date.now(), values: values.value, via: kind }))
@@ -507,7 +525,7 @@ const ecuSilent = computed(() => {
 export function useVehicle() {
   return {
     prefs, settings, status, via, error, note, snapshot, pollMode, tripLive, gpsState, gpsFix, gpsError, milOn, tripActive, protocolName, warmupInfo,
-    values, history, connectedAt, ecuStatus, motion, awaitingManual, connLog,
+    values, history, connectedAt, ecuStatus, motion, awaitingManual, connLog, batteryLog,
     liveTrip: () => session.snapshot(),
     session,
     isConnected: computed(() => status.value === 'connected'),
